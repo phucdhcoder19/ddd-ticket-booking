@@ -1,0 +1,63 @@
+server:
+  port: 9999
+  tomcat:
+    max-threads: 10
+spring:
+  application:
+    name: train-ticket-booking
+  datasource:
+    url: jdbc:mysql://localhost:3316/train_ticket?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: root1234
+    hikari:
+      maximum-pool-size: 50
+  jpa:
+    hibernate:
+      ddl-auto: update # tự tạo bảng từ @Entity — chỉ dùng khi học
+    show-sql: true # BẬT lên, bài này cần nhìn SQL để biết cache có ăn không
+    properties:
+      hibernate:
+        format_sql: true
+  data:
+    redis:
+      host: localhost
+      port: 6319
+      lettuce:
+        pool:
+          max-active: 50
+resilience4j:
+  circuitbreaker:
+    instances:
+      checkRandom:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        permittedNumberOfCallsInHalfOpenState: 3
+        #        slidingWindowType: TIME_BASED
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+  ratelimiter:
+    instances:
+      backendA:
+        limitForPeriod: 2
+        limitRefreshPeriod: 10s
+        timeoutDuration: 0
+        registerHealthIndicator: true
+        eventConsumerBufferSize: 100
+      backendB:
+        limitForPeriod: 6
+        limitRefreshPeriod: 500ms
+        timeoutDuration: 3s
+management:
+  health:
+    circuitbreakers:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include:
+          - "*"
+  endpoint:
+    health:
+      show-details: always
