@@ -1,8 +1,10 @@
 package com.hoangphuc.ddd.infrastructure.cache.redis;
 
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.Duration;
+import java.util.List;
 
 public interface RedisInfrasService {
 
@@ -19,5 +21,11 @@ public interface RedisInfrasService {
 
     void delete(String key);
 
-    RedisTemplate<String, Object> getRedisTemplate();   // để chạy Lua ở bước 6
+    /**
+     * Chạy 1 script Lua trên Redis — toàn bộ script là MỘT thao tác nguyên tử.
+     * Đây là cách duy nhất để check-rồi-set mà không bị thread khác chen vào.
+     */
+    Long executeScript(RedisScript<Long> script, List<String> keys, Object... args);
+
+    RedisTemplate<String, Object> getRedisTemplate();
 }

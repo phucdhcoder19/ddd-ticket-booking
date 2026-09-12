@@ -5,10 +5,12 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.util.List;
 
 @Component
 @Slf4j
@@ -78,6 +80,11 @@ public class RedisInfrasServiceImpl implements RedisInfrasService {
     @Override
     public void delete(String key) {
         redisTemplate.delete(key);
+    }
+
+    @Override
+    public Long executeScript(RedisScript<Long> script, List<String> keys, Object... args) {
+        return redisTemplate.execute(script, keys, args);
     }
 
     @Override

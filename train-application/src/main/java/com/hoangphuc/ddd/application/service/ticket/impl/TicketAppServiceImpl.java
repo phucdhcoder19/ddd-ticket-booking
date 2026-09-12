@@ -3,6 +3,7 @@ package com.hoangphuc.ddd.application.service.ticket.impl;
 import com.hoangphuc.ddd.application.mapper.TicketMapper;
 import com.hoangphuc.ddd.application.model.TicketDetailDTO;
 import com.hoangphuc.ddd.application.service.ticket.TicketAppService;
+import com.hoangphuc.ddd.application.service.ticket.cache.StockCacheService;
 import com.hoangphuc.ddd.application.service.ticket.cache.TicketDetailCacheService;
 import com.hoangphuc.ddd.domain.model.entity.TicketDetail;
 import com.hoangphuc.ddd.domain.service.TicketDetailDomainService;
@@ -17,6 +18,7 @@ public class TicketAppServiceImpl implements TicketAppService {
 
     private final TicketDetailDomainService ticketDetailDomainService;
     private final TicketDetailCacheService ticketDetailCacheService;
+    private final StockCacheService stockCacheService;
 
     @Override
     public TicketDetailDTO getTicketDetail(Long ticketId) {
@@ -33,12 +35,31 @@ public class TicketAppServiceImpl implements TicketAppService {
     public String buyTicket(Long ticketId, int quantity) {
         log.info("[APP] buyTicket | ticketId={} qty={}", ticketId, quantity);
 
-        // TUYẾN PHÒNG THỦ 1 (MySQL) — hiện là tuyến duy nhất.
-        // BƯỚC 6 sẽ thêm TUYẾN PHÒNG THỦ 2 (Redis + Lua) chặn TRƯỚC dòng này,
-        // và khi đó mới cần bù trừ Redis nếu DB fail.
+        // ===== TUYẾN PHÒNG THỦ 2 (Redis + Lua) — chặn sớm, không đụng DB =====
+        int redisResult = stockCacheService.deduct(ticketId, quantity);
+
+        if (redisResult == -1) {
+            // Redis chưa có key (app vừa restart / key bị xoá) -> nạp từ DB rồi thử lại
+            log.info("[APP] buyTicket: Redis chua co stock, warm-up | ticketId={}", ticketId);
+            if (!stockCacheService.warmUp(ticketId)) {
+                return "KHONG_TIM_THAY_VE";
+            }
+            redisResult = stockCacheService.deduct(ticketId, quantity);
+        }
+
+        if (redisResult == 0) {
+            // Hết vé — chặn ngay tại Redis, MySQL KHÔNG hề bị đụng tới
+            log.info("[APP] buyTicket HET_VE (chan o Redis) | ticketId={}", ticketId);
+            return "HET_VE";
+        }
+
+        // ===== TUYẾN PHÒNG THỦ 1 (MySQL) — lưới an toàn cuối cùng =====
         boolean ok = ticketDetailDomainService.decreaseStock(ticketId, quantity);
         if (!ok) {
-            log.info("[APP] buyTicket HET_VE | ticketId={}", ticketId);
+            // Redis đã trừ nhưng DB từ chối -> phải HOÀN LẠI Redis,
+            // nếu không số vé trong Redis sẽ hụt dần và bán thiếu.
+            stockCacheService.restore(ticketId, quantity);
+            log.warn("[APP] buyTicket: DB tu choi, da hoan Redis | ticketId={}", ticketId);
             return "HET_VE";
         }
 
