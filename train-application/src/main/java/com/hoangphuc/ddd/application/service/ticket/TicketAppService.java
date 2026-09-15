@@ -1,5 +1,6 @@
 package com.hoangphuc.ddd.application.service.ticket;
 
+import com.hoangphuc.ddd.application.model.PlaceOrderResult;
 import com.hoangphuc.ddd.application.model.TicketDetailDTO;
 
 /**
@@ -10,6 +11,6 @@ public interface TicketAppService {
 
     TicketDetailDTO getTicketDetail(Long ticketId);
 
-    /** @return "OK" nếu đặt được, "HET_VE" nếu không còn đủ vé */
-    String buyTicket(Long ticketId, int quantity);
+    /** Đặt vé: trừ kho + tạo đơn, nhất quán dữ liệu. */
+    PlaceOrderResult placeOrder(Long ticketId, Long userId, int quantity);
 }

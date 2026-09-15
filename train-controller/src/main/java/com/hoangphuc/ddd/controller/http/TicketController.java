@@ -1,5 +1,6 @@
 package com.hoangphuc.ddd.controller.http;
 
+import com.hoangphuc.ddd.application.model.PlaceOrderResult;
 import com.hoangphuc.ddd.application.model.TicketDetailDTO;
 import com.hoangphuc.ddd.application.service.ticket.TicketAppService;
 import com.hoangphuc.ddd.controller.dto.BuyTicketRequest;
@@ -35,19 +36,19 @@ public class TicketController {
     }
 
     @PostMapping("/buy")
-    public ResultMessage<String> buy(@Valid @RequestBody BuyTicketRequest request) {
-        log.info("[CONTROLLER] buy | ticketId={} qty={}",
-                request.getTicketId(), request.getQuantity());
-        try {
-            String result = ticketAppService.buyTicket(request.getTicketId(), request.getQuantity());
-            if ("HET_VE".equals(result)) {
-                // 409 Conflict — chỉ controller mới được biết tới mã HTTP
-                return ResultUtil.error(409, "Het ve");
-            }
-            return ResultUtil.data(result);
-        } catch (Exception e) {
-            log.error("[CONTROLLER] buy loi he thong | ticketId={}", request.getTicketId(), e);
-            return ResultUtil.error(500, "Loi he thong");
-        }
+    public ResultMessage<PlaceOrderResult> buy(@Valid @RequestBody BuyTicketRequest request) {
+        log.info("[CONTROLLER] buy | ticketId={} userId={} qty={}",
+                request.getTicketId(), request.getUserId(), request.getQuantity());
+
+        PlaceOrderResult result = ticketAppService.placeOrder(
+                request.getTicketId(), request.getUserId(), request.getQuantity());
+
+        // Chỉ controller mới biết mã HTTP
+        return switch (result.getStatus()) {
+            case SUCCESS          -> ResultUtil.data(result);
+            case OUT_OF_STOCK     -> ResultUtil.error(409, "Het ve");
+            case TICKET_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay ve");
+            case ERROR            -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
+        };
     }
 }

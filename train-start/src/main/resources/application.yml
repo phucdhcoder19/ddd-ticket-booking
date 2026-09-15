@@ -25,6 +25,12 @@ spring:
       lettuce:
         pool:
           max-active: 50
+app:
+  demo:
+    # Bai 21: doi thanh true de co tinh gay loi SAU khi tru kho MySQL
+    # -> kiem chung transaction ROLLBACK (kho quay ve so cu, khong co don)
+    fail-after-deduct: false
+
 resilience4j:
   circuitbreaker:
     instances:

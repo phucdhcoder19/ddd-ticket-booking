@@ -34,4 +34,15 @@ public class TicketDetail {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /**
+     * LUẬT NGHIỆP VỤ: giá bán thực tế = giá flash nếu có, không thì giá gốc.
+     * Tên không có tiền tố "get" để Jackson KHÔNG coi là field khi cache vào Redis.
+     */
+    public BigDecimal effectivePrice() {
+        if (priceFlash != null && priceFlash.compareTo(BigDecimal.ZERO) > 0) {
+            return priceFlash;
+        }
+        return priceOriginal;
+    }
 }

@@ -26,11 +26,8 @@ public class TicketMapper {
         dto.setDescription(entity.getDescription());
         dto.setStockAvailable(entity.getStockAvailable());
 
-        // Gộp 2 cột giá thành 1 field cho FE: có giá flash thì dùng, không thì giá gốc
-        BigDecimal flash = entity.getPriceFlash();
-        dto.setPrice(flash != null && flash.compareTo(BigDecimal.ZERO) > 0
-                ? flash
-                : entity.getPriceOriginal());
+        // Luật giá nằm ở domain (TicketDetail.effectivePrice), mapper chỉ gọi lại
+        dto.setPrice(entity.effectivePrice());
 
         // Tính sẵn "còn bán được không" từ 3 field — FE không phải tự suy luận
         LocalDateTime now = LocalDateTime.now();

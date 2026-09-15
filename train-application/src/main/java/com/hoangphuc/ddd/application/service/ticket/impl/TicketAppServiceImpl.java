@@ -1,75 +1,96 @@
 package com.hoangphuc.ddd.application.service.ticket.impl;
 
 import com.hoangphuc.ddd.application.mapper.TicketMapper;
+import com.hoangphuc.ddd.application.model.PlaceOrderResult;
 import com.hoangphuc.ddd.application.model.TicketDetailDTO;
+import com.hoangphuc.ddd.application.service.ticket.OrderTransactionService;
 import com.hoangphuc.ddd.application.service.ticket.TicketAppService;
 import com.hoangphuc.ddd.application.service.ticket.cache.StockCacheService;
 import com.hoangphuc.ddd.application.service.ticket.cache.TicketDetailCacheService;
 import com.hoangphuc.ddd.domain.model.entity.TicketDetail;
-import com.hoangphuc.ddd.domain.service.TicketDetailDomainService;
+import com.hoangphuc.ddd.domain.model.entity.TicketOrder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class TicketAppServiceImpl implements TicketAppService {
 
-    private final TicketDetailDomainService ticketDetailDomainService;
     private final TicketDetailCacheService ticketDetailCacheService;
     private final StockCacheService stockCacheService;
+    private final OrderTransactionService orderTransactionService;
 
     @Override
     public TicketDetailDTO getTicketDetail(Long ticketId) {
         log.info("[APP] getTicketDetail | ticketId={}", ticketId);
-
-        // ĐIỀU PHỐI: đi qua cache, KHÔNG gọi thẳng domain service nữa.
-        // Cache tự lo phần xuống MySQL khi miss.
         TicketDetail entity = ticketDetailCacheService.getTicketDetail(ticketId);
-
         return TicketMapper.toDTO(entity);
     }
 
+    /**
+     * Luồng đặt vé:
+     *
+     *   ① Redis Lua trừ kho          <- ngoài transaction, chặn sớm
+     *   ┌───────── 1 transaction MySQL ─────────┐
+     *   │ ② trừ kho MySQL                        │
+     *   │ ③ tạo đơn                              │
+     *   └────────────────────────────────────────┘
+     *   Lỗi ở ②③ -> MySQL tự ROLLBACK, code hoàn tay Redis ①
+     */
     @Override
-    public String buyTicket(Long ticketId, int quantity) {
-        log.info("[APP] buyTicket | ticketId={} qty={}", ticketId, quantity);
+    public PlaceOrderResult placeOrder(Long ticketId, Long userId, int quantity) {
+        log.info("[APP] placeOrder | ticketId={} userId={} qty={}", ticketId, userId, quantity);
 
-        // ===== TUYẾN PHÒNG THỦ 2 (Redis + Lua) — chặn sớm, không đụng DB =====
+        // ===== ① Redis Lua — tuyến phòng thủ 2 =====
         int redisResult = stockCacheService.deduct(ticketId, quantity);
-
         if (redisResult == -1) {
-            // Redis chưa có key (app vừa restart / key bị xoá) -> nạp từ DB rồi thử lại
-            log.info("[APP] buyTicket: Redis chua co stock, warm-up | ticketId={}", ticketId);
             if (!stockCacheService.warmUp(ticketId)) {
-                return "KHONG_TIM_THAY_VE";
+                return PlaceOrderResult.fail(PlaceOrderResult.Status.TICKET_NOT_FOUND);
             }
             redisResult = stockCacheService.deduct(ticketId, quantity);
         }
-
         if (redisResult == 0) {
-            // Hết vé — chặn ngay tại Redis, MySQL KHÔNG hề bị đụng tới
-            log.info("[APP] buyTicket HET_VE (chan o Redis) | ticketId={}", ticketId);
-            return "HET_VE";
+            log.info("[APP] het ve (chan o Redis) | ticketId={}", ticketId);
+            return PlaceOrderResult.fail(PlaceOrderResult.Status.OUT_OF_STOCK);
         }
+        // Từ đây Redis ĐÃ trừ -> mọi đường thoát thất bại đều phải restore()
 
-        // ===== TUYẾN PHÒNG THỦ 1 (MySQL) — lưới an toàn cuối cùng =====
-        boolean ok = ticketDetailDomainService.decreaseStock(ticketId, quantity);
-        if (!ok) {
-            // Redis đã trừ nhưng DB từ chối -> phải HOÀN LẠI Redis,
-            // nếu không số vé trong Redis sẽ hụt dần và bán thiếu.
+        // Lấy giá từ cache (giá hiếm khi đổi, không cần đọc MySQL)
+        TicketDetail detail = ticketDetailCacheService.getTicketDetail(ticketId);
+        if (detail == null || detail.effectivePrice() == null) {
             stockCacheService.restore(ticketId, quantity);
-            log.warn("[APP] buyTicket: DB tu choi, da hoan Redis | ticketId={}", ticketId);
-            return "HET_VE";
+            return PlaceOrderResult.fail(PlaceOrderResult.Status.TICKET_NOT_FOUND);
         }
+        BigDecimal unitPrice = detail.effectivePrice();
 
-        // Kho vừa đổi -> cache đang giữ số cũ -> phải xoá, nếu không
-        // người dùng tiếp theo sẽ thấy số vé sai suốt 10 phút.
-        ticketDetailCacheService.evict(ticketId);
+        // ===== ②③ MySQL: trừ kho + tạo đơn trong 1 transaction =====
+        try {
+            TicketOrder order = orderTransactionService
+                    .deductStockAndCreateOrder(ticketId, userId, quantity, unitPrice);
 
-        // ĐIỀU PHỐI — các bước sau sẽ mọc thêm ở đây:
-        //   insert đơn hàng, ghi outbox, gửi Kafka...
-        log.info("[APP] buyTicket OK | ticketId={} qty={}", ticketId, quantity);
-        return "OK";
+            if (order == null) {
+                // MySQL không đủ vé (Redis lệch) -> hoàn Redis
+                stockCacheService.restore(ticketId, quantity);
+                log.warn("[APP] MySQL tu choi, da hoan Redis | ticketId={}", ticketId);
+                return PlaceOrderResult.fail(PlaceOrderResult.Status.OUT_OF_STOCK);
+            }
+
+            // Kho đã đổi -> xoá cache chi tiết vé cũ
+            ticketDetailCacheService.evict(ticketId);
+
+            log.info("[APP] placeOrder OK | orderNumber={}", order.getOrderNumber());
+            return PlaceOrderResult.success(order.getOrderNumber(), order.getQuantity(), order.getTotalAmount());
+
+        } catch (Exception e) {
+            // Tới được đây nghĩa là transaction ĐÃ ROLLBACK: kho MySQL về số cũ, không có đơn.
+            // Chỉ còn Redis là chưa được hoàn -> hoàn tay.
+            stockCacheService.restore(ticketId, quantity);
+            log.error("[APP] placeOrder loi, MySQL da rollback, da hoan Redis | ticketId={}", ticketId, e);
+            return PlaceOrderResult.fail(PlaceOrderResult.Status.ERROR);
+        }
     }
 }
