@@ -12,9 +12,14 @@ public interface TicketDetailJPAMapper extends JpaRepository<TicketDetail, Long>
     Integer getStockAvailable(@Param("ticketId") Long ticketId);
 
     /**
-     * TUYẾN PHÒNG THỦ 1.
+     * TUYẾN PHÒNG THỦ 1 — CÁCH 1 trong 3 cách trừ kho MySQL (bài DDD 19).
+     *
      * Điều kiện "AND t.stockAvailable >= :quantity" là thứ duy nhất
-     * đảm bảo không oversell ở tầng DB — MySQL sẽ lock row khi UPDATE.
+     * đảm bảo không oversell ở tầng DB:
+     *   - InnoDB khoá dòng khi UPDATE -> các UPDATE cùng dòng phải xếp hàng
+     *   - Người xếp sau kiểm tra điều kiện trên giá trị MỚI NHẤT
+     *   - 1 câu SQL, không cần SELECT trước, không cần retry
+     *
      * Trả về số row bị ảnh hưởng: 1 = trừ được, 0 = hết vé.
      */
     @Modifying
