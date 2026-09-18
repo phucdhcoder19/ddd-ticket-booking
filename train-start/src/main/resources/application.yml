@@ -1,7 +1,27 @@
 server:
   port: 9999
   tomcat:
-    max-threads: 10
+    # BAI 27 — so thread theo cong thuc Brian Goetz:
+    #   N = Ncpu x Ucpu x (1 + W/C)
+    #     Ncpu = 12 core
+    #     Ucpu = 0.8  (muc CPU muon dung)
+    #     W/C  = ~4.7 (mot request cho Redis+MySQL ~7ms, tinh toan ~1.5ms)
+    #   -> 12 x 0.8 x 5.7 ~= 55, lam tron 50
+    #
+    # CHU Y KEY: Spring Boot 2.3 da bo "server.tomcat.max-threads".
+    # Viet key cu thi Spring BO QUA LANG LE, khong loi khong canh bao,
+    # va Tomcat chay 200 thread mac dinh.
+    threads:
+      max: 50
+      # Giu san bang so core -> traffic dot bien khong phai doi tao thread
+      min-spare: 12
+    # Het thread thi xep hang o DAY, noi minh do duoc va tu choi duoc.
+    # Vuot 200 thi tu choi luon, khong de don xuong MySQL.
+    accept-count: 200
+    # Bat MBean cua Tomcat -> co metric tomcat.threads.config.max de KIEM CHUNG
+    # cau hinh da an that su hay chua, thay vi tin vao file yml.
+    mbeanregistry:
+      enabled: true
 spring:
   application:
     name: train-ticket-booking
@@ -15,7 +35,18 @@ spring:
     username: root
     password: root1234
     hikari:
-      maximum-pool-size: 50
+      # Cong thuc cho HO KET NOI KHAC voi cong thuc thread:
+      #   connections = (so core x 2) + so dia = (12 x 2) + 1 = 25 -> lay 20
+      #
+      # Nho hon so thread la DUNG: moi request chi cam connection ~5ms
+      # trong vong doi ~15ms. Ho to hon suc MySQL chi lam moi query cham
+      # hon, va day hang doi xuong DB — noi minh khong kiem soat duoc.
+      maximum-pool-size: 20
+      # Bang maximum-pool-size -> ho co dinh, khong co gian.
+      # Ho co gian gay tre dung luc cao diem: phai mo connection moi (50-100ms).
+      minimum-idle: 20
+      # Cho toi da 3s roi bao loi, khong treo vo han
+      connection-timeout: 3000
   jpa:
     hibernate:
       ddl-auto: update # tự tạo bảng từ @Entity — chỉ dùng khi học
