@@ -5,8 +5,13 @@ server:
 spring:
   application:
     name: train-ticket-booking
+  # LUU Y MUI GIO: container MySQL chay gio UTC, may that chay +07.
+  # De serverTimezone=UTC thi driver hieu "08:00 trong DB la 08:00 UTC" roi doi
+  # sang gio may -> API tra ve 15:00. Cot datetime khong mang mui gio, nen phai
+  # khai dung mui cua ung dung thi doc/ghi moi doi xung.
+  # Sai cho nay se lam job quet don het han (bai 18) lech 7 tieng.
   datasource:
-    url: jdbc:mysql://localhost:3316/train_ticket?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3316/train_ticket?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
     username: root
     password: root1234
     hikari:
@@ -26,6 +31,13 @@ spring:
         pool:
           max-active: 50
 app:
+  sale:
+    # Ten dot mo ban — chu hien thi, khong phai du lieu nghiep vu
+    label: "Đợt 1 — vé Tết Đinh Mùi 2027"
+  web:
+    # Origin cua train-web. Vite nhay cong khi 5173 ban -> dung [*] cho moi cong localhost.
+    # Len that thi thay bang domain cu the, KHONG de [*].
+    allowed-origin-pattern: "http://localhost:[*]"
   demo:
     # Bai 21: doi thanh true de co tinh gay loi SAU khi tru kho MySQL
     # -> kiem chung transaction ROLLBACK (kho quay ve so cu, khong co don)
