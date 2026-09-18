@@ -28,6 +28,25 @@ export type RequestOptions = {
 
 const RETRYABLE: ApiErrorKind[] = ["OVERLOADED", "SERVER", "TIMEOUT"];
 
+/**
+ * Backend bọc MỌI phản hồi trong ResultMessage:
+ *   { success, code, message, timestamp, result }
+ *
+ * và luôn trả HTTP 200 — mã lỗi thật nằm ở trường "code" trong thân, không
+ * nằm ở status dòng đầu. Nên không thể tin res.ok, phải mở phong bì ra xem.
+ */
+type Envelope<T> = {
+  success: boolean;
+  code: number;
+  message: string;
+  timestamp?: number;
+  result: T;
+};
+
+function isEnvelope(x: unknown): x is Envelope<unknown> {
+  return typeof x === "object" && x !== null && "success" in x && "result" in x;
+}
+
 /** Backoff luỹ thừa + jitter: 0.6s, 1.2s, 2.4s (±25%), tôn trọng Retry-After của server. */
 function backoffDelay(attempt: number, retryAfterSeconds?: number): number {
   if (retryAfterSeconds != null) return Math.min(retryAfterSeconds * 1000, 15_000);
@@ -84,7 +103,26 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       });
       clearTimeout(timer);
 
-      if (res.ok) return (res.status === 204 ? undefined : await res.json()) as T;
+      if (res.ok) {
+        if (res.status === 204) return undefined as T;
+        const payload: unknown = await res.json();
+
+        // Không phải phong bì (ví dụ server khác) -> trả thẳng
+        if (!isEnvelope(payload)) return payload as T;
+
+        if (payload.success) return payload.result as T;
+
+        // success = false -> lỗi nghiệp vụ, đọc mã trong thân
+        const kind = kindFromStatus(payload.code);
+        const err = new ApiError(kind, payload.message ?? "Yêu cầu không thành công", {
+          status: payload.code,
+        });
+        if (!RETRYABLE.includes(kind) || attempt === maxAttempts) throw err;
+        const retryDelay = backoffDelay(attempt);
+        onRetry?.({ attempt, maxAttempts, delayMs: retryDelay, kind });
+        await sleep(retryDelay, signal);
+        continue;
+      }
 
       const payload = await res.json().catch(() => ({}) as Record<string, unknown>);
       const kind = kindFromStatus(res.status, payload.code as string | undefined);
