@@ -35,8 +35,20 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
     int markReleased(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
 
     @Modifying
+    /**
+     * Đổi lượt giữ chỗ thành đơn hàng.
+     *
+     * Có THÊM điều kiện "AND h.expireAt > :now" mà markReleased không cần.
+     * Lý do: job quét mỗi 10 giây, nên có khoảng hở giữa lúc hold hết hạn và
+     * lúc job dọn tới — trong khoảng đó status vẫn là 0. Chỉ kiểm status thôi
+     * thì khách dùng được hold đã quá giờ.
+     *
+     * Kiểm thời gian phải nằm TRONG câu UPDATE, không phải if ở tầng trên:
+     * đọc rồi mới ghi là còn khe hở, gộp vào WHERE thì MySQL khoá dòng và
+     * kiểm trên giá trị mới nhất.
+     */
     @Query("UPDATE Hold h SET h.status = 1, h.updatedAt = :now " +
-           "WHERE h.id = :holdId AND h.status = 0")
+           "WHERE h.id = :holdId AND h.status = 0 AND h.expireAt > :now")
     int markUsed(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
 
     /**
