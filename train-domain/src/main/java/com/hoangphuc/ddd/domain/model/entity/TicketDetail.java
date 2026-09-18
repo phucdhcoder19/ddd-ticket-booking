@@ -13,6 +13,10 @@ import java.time.LocalDateTime;
 @Table(name = "ticket_item")
 public class TicketDetail {
 
+    public static final int STATUS_INACTIVE = 0;
+    public static final int STATUS_ACTIVE   = 1;
+    public static final int STATUS_DELETED  = 2;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -44,5 +48,26 @@ public class TicketDetail {
             return priceFlash;
         }
         return priceOriginal;
+    }
+
+    /**
+     * LUẬT NGHIỆP VỤ: vé đã được mở bán chưa.
+     * Phải ACTIVE và đã tới giờ mở. saleStartTime null = mở bán ngay.
+     *
+     * Nhận "now" làm tham số, không tự gọi LocalDateTime.now() bên trong:
+     *   1. Test truyền được mốc thời gian bất kỳ
+     *   2. Hàm CÓ tham số thì Jackson không coi là field khi cache vào Redis
+     *      (cùng lý do đặt tên effectivePrice() thay vì getEffectivePrice())
+     */
+    public boolean isOpenedForSale(LocalDateTime now) {
+        if (status != STATUS_ACTIVE) {
+            return false;
+        }
+        return saleStartTime == null || !now.isBefore(saleStartTime);
+    }
+
+    /** LUẬT NGHIỆP VỤ: đã qua giờ đóng bán chưa. saleEndTime null = bán vô hạn. */
+    public boolean isSaleEnded(LocalDateTime now) {
+        return saleEndTime != null && now.isAfter(saleEndTime);
     }
 }

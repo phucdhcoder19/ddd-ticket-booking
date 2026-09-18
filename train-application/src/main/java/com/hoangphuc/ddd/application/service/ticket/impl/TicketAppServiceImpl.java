@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Service
 @Slf4j
@@ -34,6 +35,7 @@ public class TicketAppServiceImpl implements TicketAppService {
     /**
      * Luồng đặt vé:
      *
+     *   ⓪ kiểm tra luật mở bán    <- chặn trước khi đụng kho
      *   ① Redis Lua trừ kho          <- ngoài transaction, chặn sớm
      *   ┌───────── 1 transaction MySQL ─────────┐
      *   │ ② trừ kho MySQL                        │
@@ -44,6 +46,28 @@ public class TicketAppServiceImpl implements TicketAppService {
     @Override
     public PlaceOrderResult placeOrder(Long ticketId, Long userId, int quantity) {
         log.info("[APP] placeOrder | ticketId={} userId={} qty={}", ticketId, userId, quantity);
+
+        // ===== ⓪ Cổng nghiệp vụ — chặn TRƯỚC khi đụng vào kho =====
+        // FE có ẩn nút Mua, nhưng curl thì không chạy FE. Luật mở bán phải được
+        // kiểm ở ĐÂY — nơi ra quyết định — chứ không phải ở tầng hiển thị.
+        // Đọc vé lên đầu luôn: vừa để kiểm tra, vừa lấy giá -> không tốn thêm
+        // lần đọc cache nào, và bớt được 1 đường phải restore() Redis.
+        TicketDetail detail = ticketDetailCacheService.getTicketDetail(ticketId);
+        if (detail == null || detail.effectivePrice() == null) {
+            return PlaceOrderResult.fail(PlaceOrderResult.Status.TICKET_NOT_FOUND);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (!detail.isOpenedForSale(now)) {
+            log.info("[APP] ve chua mo ban | ticketId={} status={} saleStart={}",
+                    ticketId, detail.getStatus(), detail.getSaleStartTime());
+            return PlaceOrderResult.fail(PlaceOrderResult.Status.NOT_ON_SALE);
+        }
+        if (detail.isSaleEnded(now)) {
+            log.info("[APP] het gio ban | ticketId={} saleEnd={}", ticketId, detail.getSaleEndTime());
+            return PlaceOrderResult.fail(PlaceOrderResult.Status.SALE_ENDED);
+        }
+        BigDecimal unitPrice = detail.effectivePrice();
 
         // ===== ① Redis Lua — tuyến phòng thủ 2 =====
         int redisResult = stockCacheService.deduct(ticketId, quantity);
@@ -58,14 +82,6 @@ public class TicketAppServiceImpl implements TicketAppService {
             return PlaceOrderResult.fail(PlaceOrderResult.Status.OUT_OF_STOCK);
         }
         // Từ đây Redis ĐÃ trừ -> mọi đường thoát thất bại đều phải restore()
-
-        // Lấy giá từ cache (giá hiếm khi đổi, không cần đọc MySQL)
-        TicketDetail detail = ticketDetailCacheService.getTicketDetail(ticketId);
-        if (detail == null || detail.effectivePrice() == null) {
-            stockCacheService.restore(ticketId, quantity);
-            return PlaceOrderResult.fail(PlaceOrderResult.Status.TICKET_NOT_FOUND);
-        }
-        BigDecimal unitPrice = detail.effectivePrice();
 
         // ===== ②③ MySQL: trừ kho + tạo đơn trong 1 transaction =====
         try {

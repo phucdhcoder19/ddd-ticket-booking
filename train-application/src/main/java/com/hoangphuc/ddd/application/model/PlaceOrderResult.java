@@ -14,7 +14,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PlaceOrderResult {
 
-    public enum Status { SUCCESS, OUT_OF_STOCK, TICKET_NOT_FOUND, ERROR }
+    public enum Status { SUCCESS, OUT_OF_STOCK, TICKET_NOT_FOUND, NOT_ON_SALE, SALE_ENDED, ERROR }
 
     private final Status status;
     private final String orderNumber;

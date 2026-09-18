@@ -29,11 +29,12 @@ public class TicketMapper {
         // Luật giá nằm ở domain (TicketDetail.effectivePrice), mapper chỉ gọi lại
         dto.setPrice(entity.effectivePrice());
 
-        // Tính sẵn "còn bán được không" từ 3 field — FE không phải tự suy luận
+        // "Còn bán được không" = ĐÚNG luật mà placeOrder() dùng để chặn.
+        // Gọi lại domain thay vì chép điều kiện ra đây — một luật, một chỗ định nghĩa.
         LocalDateTime now = LocalDateTime.now();
-        dto.setAvailable(entity.getStatus() == 1
-                && entity.getStockAvailable() > 0
-                && (entity.getSaleEndTime() == null || now.isBefore(entity.getSaleEndTime())));
+        dto.setAvailable(entity.isOpenedForSale(now)
+                && !entity.isSaleEnded(now)
+                && entity.getStockAvailable() > 0);
 
         return dto;
     }

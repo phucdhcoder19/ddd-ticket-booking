@@ -40,3 +40,4 @@ build/
 ### Khong push ###
 .idea/
 benchmark/jmeter/
+.claude/

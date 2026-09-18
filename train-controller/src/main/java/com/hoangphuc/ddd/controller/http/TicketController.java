@@ -47,6 +47,8 @@ public class TicketController {
         return switch (result.getStatus()) {
             case SUCCESS          -> ResultUtil.data(result);
             case OUT_OF_STOCK     -> ResultUtil.error(409, "Het ve");
+            case NOT_ON_SALE      -> ResultUtil.error(409, "Ve chua mo ban");
+            case SALE_ENDED       -> ResultUtil.error(409, "Da het gio ban");
             case TICKET_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay ve");
             case ERROR            -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
         };
