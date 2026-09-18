@@ -31,6 +31,13 @@ spring:
         pool:
           max-active: 50
 app:
+  hold:
+    # Giu cho bao lau. Doi thanh 30s de xem job chay ma khong phai ngoi doi.
+    duration: 10m
+    # Moi luot quet don toi da bao nhieu -> transaction ngan, khong khoa lau
+    release-batch: 200
+    # Job quet moi bao nhieu ms
+    scan-interval-ms: 10000
   sale:
     # Ten dot mo ban — chu hien thi, khong phai du lieu nghiep vu
     label: "Đợt 1 — vé Tết Đinh Mùi 2027"
