@@ -7,6 +7,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.Optional;
+
 @Repository
 @RequiredArgsConstructor
 public class TicketDetailRepositoryImpl implements TicketDetailRepository {
@@ -22,6 +25,18 @@ public class TicketDetailRepositoryImpl implements TicketDetailRepository {
     public int getStockAvailable(Long ticketId) {
         Integer stock = ticketDetailJPAMapper.getStockAvailable(ticketId);
         return stock == null ? -1 : stock;      // -1 = không tìm thấy vé
+    }
+
+    @Override
+    public Optional<TicketDetail> findNextOpening(LocalDateTime now) {
+        return ticketDetailJPAMapper
+                .findFirstByStatusAndSaleStartTimeAfterOrderBySaleStartTimeAsc(TicketDetail.STATUS_ACTIVE, now);
+    }
+
+    @Override
+    public Optional<TicketDetail> findLatestOpened(LocalDateTime now) {
+        return ticketDetailJPAMapper
+                .findFirstByStatusAndSaleStartTimeLessThanEqualOrderBySaleStartTimeDesc(TicketDetail.STATUS_ACTIVE, now);
     }
 
     @Override

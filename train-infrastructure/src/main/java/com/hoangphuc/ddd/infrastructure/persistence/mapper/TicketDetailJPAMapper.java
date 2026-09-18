@@ -6,10 +6,25 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+import java.util.Optional;
+
 public interface TicketDetailJPAMapper extends JpaRepository<TicketDetail, Long> {
 
     @Query("SELECT t.stockAvailable FROM TicketDetail t WHERE t.id = :ticketId")
     Integer getStockAvailable(@Param("ticketId") Long ticketId);
+
+    /**
+     * Ve ACTIVE gan nhat CHUA toi gio mo ban -> dot sap mo.
+     * Ten ham dai nhung Spring Data tu sinh ca cau SQL lan thu tu sap xep,
+     * khong phai viet @Query.
+     */
+    Optional<TicketDetail> findFirstByStatusAndSaleStartTimeAfterOrderBySaleStartTimeAsc(
+            int status, LocalDateTime now);
+
+    /** Ve ACTIVE da toi gio mo gan day nhat -> dot dang chay (co the da het gio). */
+    Optional<TicketDetail> findFirstByStatusAndSaleStartTimeLessThanEqualOrderBySaleStartTimeDesc(
+            int status, LocalDateTime now);
 
     /**
      * TUYẾN PHÒNG THỦ 1 — CÁCH 1 trong 3 cách trừ kho MySQL (bài DDD 19).
