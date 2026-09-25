@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { IconChevronDown, IconLogin, IconPercent } from "@/components/ui/Icon";
 
 /**
  * Khung ứng dụng theo bố cục Traveloka:
@@ -19,11 +21,29 @@ const PRODUCTS = [
   { to: "/chuyen-tau", label: "Hoạt động & Vui chơi", end: false },
 ];
 
+/** Cao bằng đúng hai hàng của header — dùng để kéo hero chui lên dưới nó. */
+const HEADER_HEIGHT = 108;
+
 export function AppLayout() {
   const { pathname } = useLocation();
   // Phòng chờ chiếm trọn màn hình, không có điều hướng để người dùng không bỏ lượt
   const bare = pathname.startsWith("/phong-cho");
   const wide = pathname === "/";
+
+  /**
+   * Trang chủ: header trong suốt nằm ĐÈ lên ảnh hero, cuộn xuống mới hiện nền
+   * trắng. Các trang khác luôn nền trắng vì không có ảnh để đè lên.
+   */
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    if (!wide) return;
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [wide]);
+
+  const onImage = wide && !scrolled;
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
@@ -34,32 +54,55 @@ export function AppLayout() {
         Bỏ qua, tới nội dung chính
       </a>
 
-      <header className="sticky top-0 z-30 bg-white shadow-[var(--shadow-soft)]">
+      <header
+        className={cn(
+          "sticky top-0 z-30 transition-colors duration-200",
+          onImage ? "bg-transparent" : "bg-white shadow-[var(--shadow-soft)]",
+        )}
+      >
         {/* Hàng 1 */}
-        <div className="bg-brand-swoosh">
+        <div className={onImage ? "bg-swoosh-dark" : "bg-brand-swoosh"}>
           <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-6 px-4 sm:px-6">
             <NavLink to="/" className="shrink-0 rounded-lg" aria-label="Vé Tàu Tết — về trang chủ">
-              <Wordmark />
+              <Wordmark light={onImage} />
             </NavLink>
 
-            <nav aria-label="Liên kết phụ" className="hidden flex-1 items-center gap-5 text-sm font-semibold text-ink-800 lg:flex">
-              <button type="button" className="flex items-center gap-1.5 rounded-lg hover:text-son-600">
-                <span aria-hidden>🇻🇳</span> VND | VI
+            <nav
+              aria-label="Liên kết phụ"
+              className={cn(
+                "hidden flex-1 items-center gap-5 text-sm font-semibold lg:flex",
+                onImage ? "text-white" : "text-ink-800",
+              )}
+            >
+              <button type="button" className="flex items-center gap-1.5 rounded-lg hover:opacity-80">
+                <span aria-hidden className="text-base leading-none">🇻🇳</span>
+                VND | VI
+                <IconChevronDown size={14} />
               </button>
-              <button type="button" className="flex items-center gap-1.5 rounded-lg hover:text-son-600">
-                <span aria-hidden className="text-ok-600">%</span> Khuyến mãi
+              <button type="button" className="flex items-center gap-1.5 rounded-lg hover:opacity-80">
+                <IconPercent size={18} className={onImage ? "text-white" : "text-ok-600"} />
+                Khuyến mãi
               </button>
-              <button type="button" className="rounded-lg hover:text-son-600">Hợp tác với chúng tôi</button>
-              <button type="button" className="rounded-lg hover:text-son-600">Hỗ trợ</button>
-              <NavLink to="/ve-cua-toi" className="rounded-lg hover:text-son-600">Đặt chỗ của tôi</NavLink>
+              <button type="button" className="rounded-lg hover:opacity-80">Hợp tác với chúng tôi</button>
+              <button type="button" className="flex items-center gap-1 rounded-lg hover:opacity-80">
+                Hỗ trợ <IconChevronDown size={14} />
+              </button>
+              <NavLink to="/ve-cua-toi" className="rounded-lg hover:opacity-80">Đặt chỗ của tôi</NavLink>
             </nav>
 
             <div className="ml-auto flex items-center gap-2 lg:ml-0">
               <button
                 type="button"
-                className="hidden rounded-full border border-son-200 bg-son-50 px-5 py-2 text-sm font-bold text-son-700 hover:bg-son-100 sm:block"
+                className={cn(
+                  "hidden rounded-full px-5 py-2 text-sm font-bold sm:block",
+                  onImage
+                    ? "bg-white/15 text-white ring-1 ring-white/50 hover:bg-white/25"
+                    : "border border-son-200 bg-son-50 text-son-700 hover:bg-son-100",
+                )}
               >
-                Đăng nhập
+                <span className="flex items-center gap-1.5">
+                  Đăng nhập <IconLogin size={16} />
+                </span>
               </button>
               <button
                 type="button"
@@ -72,7 +115,10 @@ export function AppLayout() {
         </div>
 
         {/* Hàng 2 — thanh sản phẩm */}
-        <nav aria-label="Sản phẩm" className="border-t border-ink-100">
+        <nav
+          aria-label="Sản phẩm"
+          className={cn(onImage ? "" : "border-t border-ink-100")}
+        >
           <ul className="no-scrollbar mx-auto flex max-w-[1200px] gap-1 overflow-x-auto px-4 sm:px-6">
             {PRODUCTS.map((p, i) => (
               <li key={`${p.label}-${i}`}>
@@ -82,7 +128,11 @@ export function AppLayout() {
                   className={({ isActive }) =>
                     cn(
                       "block whitespace-nowrap rounded-lg px-3 py-3 text-sm font-semibold transition-colors",
-                      isActive && i === 0 ? "text-son-600" : "text-ink-700 hover:text-son-600",
+                      onImage
+                        ? "text-white hover:text-white/80"
+                        : isActive && i === 0
+                          ? "text-son-600"
+                          : "text-ink-700 hover:text-son-600",
                     )
                   }
                 >
@@ -91,8 +141,16 @@ export function AppLayout() {
               </li>
             ))}
             <li>
-              <button type="button" className="whitespace-nowrap rounded-lg px-3 py-3 text-sm font-semibold text-ink-700 hover:text-son-600">
-                Thêm ⌄
+              <button
+                type="button"
+                className={cn(
+                  "whitespace-nowrap rounded-lg px-3 py-3 text-sm font-semibold",
+                  onImage ? "text-white hover:text-white/80" : "text-ink-700 hover:text-son-600",
+                )}
+              >
+                <span className="flex items-center gap-1">
+                  Thêm <IconChevronDown size={14} />
+                </span>
               </button>
             </li>
           </ul>
@@ -102,6 +160,7 @@ export function AppLayout() {
       <main
         id="noi-dung"
         className={cn("w-full flex-1", wide ? "" : "mx-auto max-w-2xl px-4 pb-6 pt-4 sm:px-6")}
+        style={wide ? { marginTop: -HEADER_HEIGHT } : undefined}
       >
         <Outlet />
       </main>

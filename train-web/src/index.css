@@ -12,7 +12,9 @@
    Mọi cặp chữ/nền dưới đây đạt contrast >= 4.5:1 (AA).
    ────────────────────────────────────────────────────────────── */
 @theme {
-  --font-sans: "Be Vietnam Pro", ui-sans-serif, system-ui, sans-serif;
+  /* Plus Jakarta Sans — sans hình học, cùng gốc Indonesia với Traveloka và
+     rất gần font của họ. Có đủ dấu tiếng Việt, kể cả ế ộ ữ ỹ. */
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
   /* Xanh Traveloka (primary) */
   --color-son-50: #eff8ff;
@@ -94,6 +96,17 @@
       rgb(1 148 243 / 0.55) 0%,
       rgb(1 148 243 / 0.15) 38%,
       transparent 62%
+    );
+  }
+
+  /* Mảng xanh góc trái khi header trong suốt nằm trên ảnh tối — đậm hơn
+     bản bg-brand-swoosh vì phải nổi lên trên nền ảnh, không phải nền trắng */
+  .bg-swoosh-dark {
+    background-image: radial-gradient(
+      110% 200% at 0% 0%,
+      rgb(1 148 243 / 0.75) 0%,
+      rgb(1 148 243 / 0.30) 42%,
+      transparent 68%
     );
   }
 

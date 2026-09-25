@@ -30,25 +30,27 @@ export function SaleCountdown({
   ];
 
   return (
-    <div>
-      <p className="text-sm font-medium text-mai-100">{label} mở bán sau</p>
-      <div className="mt-2 flex items-center gap-1.5" aria-hidden>
+    <div className="inline-flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-black/25 px-4 py-2.5 backdrop-blur-sm">
+      <span className="text-sm font-semibold text-white">{label} mở bán sau</span>
+
+      {/* Một hàng ngang gọn, không còn 4 khối vuông to chiếm nửa màn hình */}
+      <span className="flex items-baseline gap-1.5" aria-hidden>
         {cells.map((c, i) => (
-          <div key={c.unit} className="flex items-center gap-1.5">
-            <div className="rounded-xl bg-white/15 px-2.5 py-1.5 text-center backdrop-blur-sm">
-              <div className="tnum text-2xl font-bold text-white sm:text-3xl">
-                {String(c.value).padStart(2, "0")}
-              </div>
-              <div className="text-[11px] font-medium text-mai-100">{c.unit}</div>
-            </div>
-            {i < cells.length - 1 && <span className="pb-4 text-xl font-bold text-white/50">:</span>}
-          </div>
+          <span key={c.unit} className="flex items-baseline gap-1.5">
+            <span className="tnum text-xl font-bold text-white">
+              {String(c.value).padStart(2, "0")}
+            </span>
+            <span className="text-[11px] font-medium text-white/70">{c.unit}</span>
+            {i < cells.length - 1 && <span className="text-white/40">·</span>}
+          </span>
         ))}
-      </div>
+      </span>
+
+      <span className="text-sm text-white/70">· Mở bán {formatDateTime(opensAt)}</span>
+
       <p className="sr-only" aria-live="polite">
         Còn {days} ngày {hours} giờ {minutes} phút nữa tới giờ mở bán, lúc {formatDateTime(opensAt)}.
       </p>
-      <p className="mt-2 text-sm text-mai-100">Mở bán lúc {formatDateTime(opensAt)}</p>
     </div>
   );
 }

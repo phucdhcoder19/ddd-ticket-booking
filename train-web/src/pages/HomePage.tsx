@@ -8,6 +8,11 @@ import { LunarDatePicker } from "@/components/LunarDatePicker";
 import { ErrorState, Skeleton } from "@/components/ui/StateView";
 import { formatDate, formatVnd, fromDateKey, toDateKey, weekdayLabel } from "@/lib/format";
 import { getDayInfo, peakText } from "@/lib/lunar";
+import heroImage from "@/assets/hero-bromo.jpg";
+import {
+  IconBus, IconCalendar, IconCar, IconGrid, IconHotel, IconPin, IconSearch,
+  IconSwap, IconTicket, IconTrain, IconTransfer, IconUser, IconFlag,
+} from "@/components/ui/Icon";
 
 /**
  * Trang chủ theo bố cục Traveloka:
@@ -35,12 +40,12 @@ export function HomePage() {
 /* ─────────────────────────── HERO + TÌM KIẾM ─────────────────────────── */
 
 const PRODUCT_TABS = [
-  { icon: "🚆", label: "Vé tàu" },
-  { icon: "🚌", label: "Vé xe khách" },
-  { icon: "🏨", label: "Khách sạn" },
-  { icon: "🚐", label: "Đưa đón ga" },
-  { icon: "🚗", label: "Cho thuê xe" },
-  { icon: "🎡", label: "Hoạt động & Vui chơi" },
+  { Icon: IconTrain,    label: "Vé tàu" },
+  { Icon: IconBus,      label: "Vé xe khách" },
+  { Icon: IconHotel,    label: "Khách sạn" },
+  { Icon: IconTransfer, label: "Đưa đón ga" },
+  { Icon: IconCar,      label: "Cho thuê xe" },
+  { Icon: IconTicket,   label: "Hoạt động & Vui chơi" },
 ];
 
 const SEAT_FILTERS = ["Tất cả", "Ngồi mềm", "Khoang 4", "Khoang 6"];
@@ -79,13 +84,14 @@ function Hero() {
     <section className="relative">
       <HeroBackdrop />
 
-      <div className="relative mx-auto max-w-[1200px] px-4 pb-32 pt-12 sm:px-6 sm:pb-36 sm:pt-16">
-        <h1 className="text-center text-[28px] font-bold leading-tight text-white sm:text-[38px]">
+      {/* pt-[132px]: chua cho header trong suot dang de len phia tren */}
+      <div className="relative mx-auto max-w-[1200px] px-4 pb-[72px] pt-[124px] sm:px-6 sm:pb-20 sm:pt-[140px]">
+        <h1 className="text-center text-[30px] font-extrabold leading-tight text-white sm:text-[44px]">
           Về nhà đón Tết, đặt vé trong một chạm
         </h1>
 
         {/* Tab sản phẩm */}
-        <div className="no-scrollbar mt-8 flex justify-start gap-1 overflow-x-auto sm:justify-center">
+        <div className="no-scrollbar mt-7 flex justify-start gap-1 overflow-x-auto sm:justify-center">
           {PRODUCT_TABS.map((t, i) => (
             <button
               key={t.label}
@@ -93,19 +99,26 @@ function Hero() {
               aria-current={i === 0 ? "true" : undefined}
               className={
                 i === 0
-                  ? "flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-bold text-ink-900 shadow-[var(--shadow-lift)]"
-                  : "flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white/85 hover:bg-white/15"
+                  ? "flex shrink-0 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[15px] font-bold text-ink-900"
+                  : "flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-[15px] font-semibold text-white hover:bg-white/10"
               }
             >
-              <span aria-hidden className="text-base">{t.icon}</span>
+              <t.Icon size={20} className={i === 0 ? "text-son-500" : undefined} />
               {t.label}
             </button>
           ))}
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-[15px] font-semibold text-white hover:bg-white/10"
+          >
+            <IconGrid size={20} />
+            Khác
+          </button>
         </div>
-        <div className="mt-6 border-t border-white/25" />
+        <div className="mx-auto mt-5 max-w-[1140px] border-t border-white/35" />
 
         {/* Bộ lọc loại chỗ */}
-        <div className="no-scrollbar mt-5 flex gap-2 overflow-x-auto">
+        <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto">
           {SEAT_FILTERS.map((f) => (
             <button
               key={f}
@@ -115,7 +128,7 @@ function Hero() {
               className={
                 seatFilter === f
                   ? "shrink-0 rounded-full bg-son-500 px-4 py-1.5 text-sm font-bold text-white"
-                  : "shrink-0 rounded-full bg-white/15 px-4 py-1.5 text-sm font-semibold text-white hover:bg-white/25"
+                  : "shrink-0 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-ink-800 hover:bg-ink-100"
               }
             >
               {f}
@@ -123,38 +136,53 @@ function Hero() {
           ))}
         </div>
 
-        {/* Hộp tìm kiếm */}
-        <div className="mt-4 rounded-lg bg-white p-3 shadow-[var(--shadow-float)] sm:p-4">
-          {stations.loading ? (
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Skeleton className="h-16 flex-1" />
-              <Skeleton className="h-16 flex-1" />
-              <Skeleton className="h-16 flex-1" />
-            </div>
-          ) : stations.error ? (
+        {/* Nhãn nằm NGOÀI hộp trắng, chữ trắng đè lên ảnh — đúng cách Traveloka
+            làm. Hộp trắng chỉ chứa giá trị nên nó mỏng, và các ô canh thẳng
+            hàng với nhau thay vì mỗi ô một khung riêng. */}
+        {stations.loading ? (
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <Skeleton className="h-16 flex-1" />
+            <Skeleton className="h-16 flex-1" />
+            <Skeleton className="h-16 flex-1" />
+          </div>
+        ) : stations.error ? (
+          <div className="mt-5 rounded-lg bg-white p-4">
             <ErrorState error={stations.error} onRetry={stations.reload} compact />
-          ) : (
-            <>
-              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1.1fr_0.9fr_auto]">
-                <SearchField label="Ga đi" icon="📍">
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 hidden gap-2 text-sm font-semibold text-white sm:grid sm:grid-cols-[1fr_1fr_1.1fr_0.9fr_56px]">
+              <span>Ga đi</span>
+              <span>Ga đến</span>
+              <span>Ngày đi</span>
+              <span>Số hành khách</span>
+              <span />
+            </div>
+
+            {/* Các ô TÁCH RỜI nhau bằng khe hở 2px — Traveloka không dùng vạch
+                ngăn liền mà để nền trắng của hộp lộ ra thành khe. Nút tìm dính
+                sát mép phải, chỉ bo góc bên phải. */}
+            <div className="mt-1.5 overflow-hidden rounded-lg bg-white p-0 shadow-[var(--shadow-float)]">
+              <div className="grid gap-px bg-ink-200 sm:grid-cols-[1fr_1fr_1.1fr_0.9fr_60px]">
+                <SearchCell label="Ga đi" Icon={IconPin}>
                   <select
                     value={from}
                     onChange={(e) => setFrom(e.target.value)}
                     aria-label="Ga đi"
-                    className="w-full cursor-pointer bg-transparent text-base font-bold text-ink-900 outline-none"
+                    className="w-full cursor-pointer truncate bg-transparent text-[15px] font-bold text-ink-900 outline-none"
                   >
                     {stationList.map((s) => (
                       <option key={s.code} value={s.code}>{s.name}</option>
                     ))}
                   </select>
-                </SearchField>
+                </SearchCell>
 
-                <SearchField label="Ga đến" icon="🏁" error={sameStation ? "Ga đến phải khác ga đi" : null}>
+                <SearchCell label="Ga đến" Icon={IconFlag}>
                   <select
                     value={to}
                     onChange={(e) => setTo(e.target.value)}
                     aria-label="Ga đến"
-                    className="w-full cursor-pointer bg-transparent text-base font-bold text-ink-900 outline-none"
+                    className="w-full cursor-pointer truncate bg-transparent text-[15px] font-bold text-ink-900 outline-none"
                   >
                     {stationList.map((s) => (
                       <option key={s.code} value={s.code}>{s.name}</option>
@@ -164,73 +192,79 @@ function Hero() {
                     type="button"
                     onClick={swap}
                     aria-label="Đổi chiều ga đi và ga đến"
-                    className="absolute -top-4 left-[-22px] hidden size-9 place-items-center rounded-full border border-ink-200 bg-white text-son-600 shadow-[var(--shadow-soft)] hover:border-son-300 sm:grid"
+                    className="absolute -left-4 top-1/2 z-10 hidden size-8 -translate-y-1/2 place-items-center rounded-full border border-ink-200 bg-white text-son-600 shadow-[var(--shadow-soft)] hover:border-son-400 sm:grid"
                   >
-                    <span aria-hidden>⇄</span>
+                    <IconSwap size={15} />
                   </button>
-                </SearchField>
+                </SearchCell>
 
-                <SearchField label="Ngày đi" icon="📅">
+                <SearchCell label="Ngày đi" Icon={IconCalendar}>
                   <button
                     type="button"
                     onClick={() => setPickerOpen((v) => !v)}
                     aria-expanded={pickerOpen}
-                    className="w-full truncate text-left text-base font-bold text-ink-900"
+                    className="w-full truncate text-left text-[15px] font-bold text-ink-900"
                   >
                     {weekdayLabel(fromDateKey(date))}, {formatDate(fromDateKey(date))}
                   </button>
-                </SearchField>
+                </SearchCell>
 
-                <SearchField label="Số hành khách" icon="👤">
+                <SearchCell label="Số hành khách" Icon={IconUser}>
                   <select
                     value={String(passengers)}
                     onChange={(e) => setPassengers(Number(e.target.value))}
                     aria-label="Số hành khách"
-                    className="w-full cursor-pointer bg-transparent text-base font-bold text-ink-900 outline-none"
+                    className="w-full cursor-pointer bg-transparent text-[15px] font-bold text-ink-900 outline-none"
                   >
                     {[1, 2, 3, 4].map((n) => (
                       <option key={n} value={n}>{n} người</option>
                     ))}
                   </select>
-                </SearchField>
+                </SearchCell>
 
                 <button
                   type="button"
                   onClick={submit}
                   disabled={sameStation}
-                  className="grid min-h-14 place-items-center rounded-md bg-mai-500 px-6 text-base font-bold text-white hover:bg-mai-600 disabled:cursor-not-allowed disabled:bg-ink-300 sm:px-5"
+                  aria-label="Tìm chuyến tàu"
+                  className="flex min-h-[62px] items-center justify-center gap-2 bg-mai-500 text-base font-bold text-white hover:bg-mai-600 disabled:cursor-not-allowed disabled:bg-ink-300"
                 >
+                  <IconSearch size={22} />
                   <span className="sm:hidden">Tìm chuyến tàu</span>
-                  <span aria-hidden className="hidden text-xl sm:block">🔍</span>
-                  <span className="sr-only hidden sm:block">Tìm chuyến tàu</span>
                 </button>
               </div>
+            </div>
 
-              {pickerOpen && (
-                <div className="mt-3 rounded-md border border-ink-200 p-3">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-ink-600">Âm lịch {dayInfo.lunarText}</span>
-                    {dayInfo.peak !== "none" && (
-                      <span className="rounded-full bg-mai-50 px-2.5 py-0.5 text-xs font-bold text-mai-700">
-                        {peakText[dayInfo.peak]}
-                      </span>
-                    )}
-                  </div>
-                  <LunarDatePicker value={date} onChange={(d) => { setDate(d); setPickerOpen(false); }} />
+            {sameStation && (
+              <p className="mt-2 inline-block rounded bg-mai-600 px-2.5 py-1 text-sm font-semibold text-white">
+                Ga đến phải khác ga đi
+              </p>
+            )}
+
+            {pickerOpen && (
+              <div className="mt-2 rounded-lg bg-white p-4 shadow-[var(--shadow-float)]">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-ink-600">Âm lịch {dayInfo.lunarText}</span>
+                  {dayInfo.peak !== "none" && (
+                    <span className="rounded-full bg-mai-50 px-2.5 py-0.5 text-xs font-bold text-mai-700">
+                      {peakText[dayInfo.peak]}
+                    </span>
+                  )}
                 </div>
-              )}
+                <LunarDatePicker value={date} onChange={(d) => { setDate(d); setPickerOpen(false); }} />
+              </div>
+            )}
 
-              {dayInfo.peak === "peak" && !pickerOpen && (
-                <p className="mt-3 rounded-md bg-mai-50 px-3 py-2 text-sm text-ink-700">
-                  Ngày cao điểm Tết, vé hết rất nhanh. Chuẩn bị sẵn số CCCD của tất cả hành khách trước khi tìm chuyến.
-                </p>
-              )}
-            </>
-          )}
-        </div>
+            {dayInfo.peak === "peak" && !pickerOpen && (
+              <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-mai-500/90 px-3 py-1 text-[13px] font-semibold text-white">
+                Cao điểm Tết · vé hết nhanh, chuẩn bị sẵn CCCD
+              </p>
+            )}
+          </>
+        )}
 
         {/* Đếm ngược mở bán */}
-        <div className="mt-4">
+        <div className="mt-3.5">
           {sale.loading ? (
             <Skeleton className="h-16 w-full bg-white/20" />
           ) : sale.data ? (
@@ -240,8 +274,8 @@ function Hero() {
       </div>
 
       {/* Dải đối tác đè lên mép dưới ảnh hero */}
-      <div className="relative mx-auto -mb-10 max-w-[1000px] px-4 sm:px-6">
-        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 rounded-lg bg-white px-6 py-5 shadow-[var(--shadow-lift)]">
+      <div className="relative mx-auto -mb-8 max-w-[1000px] px-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 rounded-lg bg-white px-6 py-4 shadow-[var(--shadow-lift)]">
           <span className="text-sm text-ink-500">Đối tác vận chuyển</span>
           {["Đường sắt Việt Nam", "Sài Gòn Railways", "Hà Nội Railways", "Ratraco"].map((p) => (
             <span key={p} className="text-sm font-bold text-ink-700">{p}</span>
@@ -253,87 +287,55 @@ function Hero() {
 }
 
 /**
- * Nen hero: troi dem chuyen sac + day nui nhieu lop, dung bang SVG.
- * Khong dung anh chup vi anh phai du lon moi khong vo o man rong,
- * ma tai ve nang; ve vector thi net o moi do phan giai va luon render duoc.
+ * Nền hero: ảnh núi Bromo lúc hoàng hôn.
+ *
+ * Ảnh gốc là PNG 1,77 MB — nặng gấp 13 lần mức cần thiết cho một tấm nền.
+ * Đã nén sang JPEG chất lượng 82 còn 139 KB; mắt thường không phân biệt
+ * được vì ảnh luôn bị lớp phủ tối đè lên và chưa bao giờ hiện nguyên bản.
+ *
+ * object-cover để ảnh luôn phủ kín khung dù màn rộng hay hẹp, không méo.
+ * object-center giữ ngọn núi ở giữa khi bị cắt hai bên.
  */
 function HeroBackdrop() {
   return (
     <div aria-hidden className="absolute inset-0 overflow-hidden bg-son-950">
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage:
-            "linear-gradient(180deg,#071a2d 0%,#0d2c4a 38%,#1b4f78 68%,#2f7ba6 88%,#5aa8c9 100%)",
-        }}
+      <img
+        src={heroImage}
+        alt=""
+        className="size-full object-cover object-center"
+        // Ảnh này nằm ngay đầu trang, tải càng sớm càng tốt — đừng lazy
+        loading="eager"
+        fetchPriority="high"
       />
-      {/* Quang sang chan troi */}
-      <div
-        className="absolute inset-x-0 bottom-0 h-1/2"
-        style={{
-          backgroundImage:
-            "radial-gradient(70% 100% at 50% 100%, rgb(255 196 128 / 0.35) 0%, transparent 70%)",
-        }}
-      />
-      <svg viewBox="0 0 1440 520" preserveAspectRatio="none" className="absolute inset-0 size-full">
-        {/* Sao */}
-        <g fill="#ffffff">
-          {STARS.map((st, i) => (
-            <circle key={i} cx={st[0]} cy={st[1]} r={st[2]} opacity={st[3]} />
-          ))}
-        </g>
-        {/* Day nui xa */}
-        <path
-          d="M0 520 L0 330 L150 250 L280 320 L420 214 L560 306 L700 236 L860 320 L1010 246 L1160 322 L1300 262 L1440 330 L1440 520Z"
-          fill="#0d2c4a"
-          opacity="0.85"
-        />
-        {/* Day nui gan */}
-        <path
-          d="M0 520 L0 404 L180 340 L330 412 L500 322 L660 420 L820 356 L980 430 L1140 368 L1300 436 L1440 390 L1440 520Z"
-          fill="#071a2d"
-          opacity="0.92"
-        />
-      </svg>
-      {/* Lop phu de chu trang luon doc duoc */}
+      {/* Lớp phủ tối để chữ trắng và hộp tìm kiếm luôn đọc được */}
       <div className="hero-scrim absolute inset-0" />
     </div>
   );
 }
 
-/** [x, y, r, opacity] — rai tay cho tu nhien, khong dung random de khong nhay moi lan render */
-const STARS: [number, number, number, number][] = [
-  [90, 48, 1.4, 0.9], [210, 96, 1, 0.6], [318, 40, 1.6, 0.75], [402, 128, 1, 0.5],
-  [520, 62, 1.2, 0.8], [640, 110, 1, 0.55], [712, 44, 1.5, 0.85], [820, 92, 1.1, 0.6],
-  [930, 56, 1.3, 0.7], [1040, 120, 1, 0.5], [1128, 52, 1.6, 0.8], [1240, 100, 1.1, 0.6],
-  [1352, 60, 1.3, 0.75], [160, 160, 1, 0.45], [470, 176, 1, 0.4], [880, 168, 1, 0.45],
-  [1300, 172, 1, 0.4], [600, 24, 1, 0.5], [1000, 28, 1.2, 0.6],
-];
-
-function SearchField({
+/**
+ * Một ô trong hộp tìm kiếm.
+ *
+ * KHÔNG có viền riêng — vách ngăn giữa các ô do "divide-x" của hộp cha vẽ.
+ * Nhãn ở đây chỉ hiện trên màn hình hẹp; màn rộng thì nhãn nằm ngoài hộp,
+ * chữ trắng đè lên ảnh hero.
+ */
+function SearchCell({
   label,
-  icon,
-  error,
+  Icon,
   children,
 }: {
   label: string;
-  icon: string;
-  error?: string | null;
+  Icon: (p: { size?: number; className?: string }) => ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="relative">
-      <span className="mb-1 block text-xs font-semibold text-ink-500">{label}</span>
-      <div
-        className={
-          "flex min-h-14 items-center gap-2 rounded-md border px-3 " +
-          (error ? "border-mai-500 bg-mai-50" : "border-ink-200 bg-white")
-        }
-      >
-        <span aria-hidden className="shrink-0 text-base">{icon}</span>
-        <div className="min-w-0 flex-1">{children}</div>
+    <div className="relative flex min-h-[62px] items-center gap-2.5 bg-white px-4">
+      <Icon size={20} className="shrink-0 text-son-500" />
+      <div className="min-w-0 flex-1">
+        <span className="block text-[11px] font-semibold text-ink-500 sm:hidden">{label}</span>
+        {children}
       </div>
-      {error && <p className="mt-1 text-xs font-semibold text-mai-700">{error}</p>}
     </div>
   );
 }
@@ -341,9 +343,9 @@ function SearchField({
 /* ─────────────────────────── MÃ GIẢM GIÁ ─────────────────────────── */
 
 const PROMOS = [
-  { icon: "🚆", tint: "bg-son-50 text-son-600", title: "Giảm đến 75.000đ cho lần đặt vé tàu đầu tiên", code: "VETAUMOI" },
-  { icon: "🏨", tint: "bg-ok-50 text-ok-600", title: "Giảm tới 250.000đ cho lần đặt phòng đầu tiên", code: "VETAUMOI" },
-  { icon: "🎡", tint: "bg-mai-50 text-mai-600", title: "Giảm đến 10% cho lần đặt vé tham quan", code: "VETAUMOI" },
+  { Icon: IconTrain,  tint: "bg-son-50 text-son-600", title: "Giảm đến 75.000đ cho lần đặt vé tàu đầu tiên", code: "VETAUMOI" },
+  { Icon: IconHotel,  tint: "bg-ok-50 text-ok-600",   title: "Giảm tới 250.000đ cho lần đặt phòng đầu tiên", code: "VETAUMOI" },
+  { Icon: IconTicket, tint: "bg-mai-50 text-mai-600", title: "Giảm đến 10% cho lần đặt vé tham quan", code: "VETAUMOI" },
 ];
 
 function PromoCodes() {
@@ -360,13 +362,13 @@ function PromoCodes() {
   };
 
   return (
-    <Section title="Mã giảm giá cho người dùng mới" subtitle="Áp dụng cho lần đặt chỗ đầu tiên trên ứng dụng" pad="pt-20">
+    <Section title="Mã giảm giá cho người dùng mới" subtitle="Áp dụng cho lần đặt chỗ đầu tiên trên ứng dụng" pad="pt-16">
       <div className="grid gap-4 sm:grid-cols-3">
         {PROMOS.map((p, i) => (
           <div key={p.title} className="overflow-hidden rounded-lg border border-ink-200 bg-white">
             <div className="flex gap-3 p-4">
-              <span aria-hidden className={`grid size-8 shrink-0 place-items-center rounded-full ${p.tint}`}>
-                {p.icon}
+              <span className={`grid size-9 shrink-0 place-items-center rounded-full ${p.tint}`}>
+                <p.Icon size={18} />
               </span>
               <div className="min-w-0">
                 <h3 className="text-[15px] font-bold leading-snug text-ink-900">{p.title}</h3>
@@ -487,7 +489,7 @@ function PriceDeals() {
             <div className="p-3">
               <h3 className="font-bold text-ink-900">{r.from} — {r.to}</h3>
               <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
-                <span aria-hidden>🌸</span> {r.date}
+                <IconCalendar size={15} /> {r.date}
               </p>
               <p className="tnum mt-1 text-[17px] font-bold text-mai-600">{formatVnd(r.price)}</p>
             </div>
@@ -512,7 +514,7 @@ const TRAINS = [
 function PopularTrains() {
   const [region, setRegion] = useState(TRAIN_REGIONS[0]);
   return (
-    <Section title="Chuyến tàu được đặt nhiều" icon="🚆" more>
+    <Section title="Chuyến tàu được đặt nhiều" Icon={IconTrain} more>
       <Chips items={TRAIN_REGIONS} value={region} onChange={setRegion} />
       <div className="no-scrollbar mt-4 grid grid-flow-col auto-cols-[78%] gap-4 overflow-x-auto pb-1 sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-4 sm:overflow-visible">
         {TRAINS.map((t) => (
@@ -523,7 +525,7 @@ function PopularTrains() {
           >
             <div className="card-scene relative h-36" style={{ ["--scene" as string]: t.scene }}>
               <span className="absolute left-3 top-3 flex items-center gap-1 rounded bg-son-500 px-2 py-1 text-[11px] font-bold text-white">
-                <span aria-hidden>📍</span> {t.station}
+                <IconPin size={13} /> {t.station}
               </span>
               <Mountains />
               <span className="absolute bottom-0 right-0 bg-mai-500 px-2.5 py-1 text-[11px] font-bold text-white">
@@ -678,14 +680,14 @@ function Newsletter() {
 function Section({
   title,
   subtitle,
-  icon,
+  Icon,
   more,
   pad = "pt-14",
   children,
 }: {
   title: string;
   subtitle?: string;
-  icon?: string;
+  Icon?: (p: { size?: number; className?: string }) => ReactNode;
   more?: boolean;
   pad?: string;
   children: ReactNode;
@@ -694,7 +696,7 @@ function Section({
     <section className={`mx-auto max-w-[1200px] px-4 sm:px-6 ${pad}`}>
       <div className="mb-4 flex items-center gap-3">
         <h2 className="flex items-center gap-2 text-xl font-bold text-ink-900 sm:text-2xl">
-          {icon && <span aria-hidden>{icon}</span>}
+          {Icon && <Icon size={26} className="text-son-500" />}
           {title}
         </h2>
         {more && (

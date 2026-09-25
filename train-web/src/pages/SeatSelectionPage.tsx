@@ -47,8 +47,11 @@ export function SeatSelectionPage() {
   }, [trip, seatClass, tripId, navigate]);
 
   const carriages = useAsync(
-    (o) => (seatClass ? api.getCarriages(tripId, seatClass, o) : Promise.resolve([] as Carriage[])),
-    [tripId, seatClass],
+    (o) =>
+      seatClass && query
+        ? api.getCarriages(tripId, seatClass, { from: query.from, to: query.to }, o)
+        : Promise.resolve([] as Carriage[]),
+    [tripId, seatClass, query],
   );
 
   // Làm mới ngầm sơ đồ ghế
@@ -98,8 +101,15 @@ export function SeatSelectionPage() {
   const { submit: holdSeats, pending: holding, resetKey } = useSubmitLock(async ({ idempotencyKey }) => {
     if (!seatClass) return;
     try {
+      if (!query) return;
       const hold = await api.holdSeats(
-        { tripId, seatClass, seatIds: selected.map((s) => s.id) },
+        {
+          tripId,
+          seatClass,
+          seatIds: selected.map((s) => s.id),
+          from: query.from,
+          to: query.to,
+        },
         { idempotencyKey },
       );
       setHold(hold);

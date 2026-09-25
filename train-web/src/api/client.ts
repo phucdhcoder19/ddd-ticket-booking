@@ -33,14 +33,26 @@ export const api = {
   getTrip: (tripId: string, o?: CallOptions) =>
     USE_MOCK ? mockApi.getTrip(tripId) : request<Trip>(`/trips/${tripId}`, o),
 
-  getCarriages: (tripId: string, seatClass: SeatClassCode, o?: CallOptions) =>
+  /**
+   * Sơ đồ chỗ của một toa.
+   *
+   * Phải kèm cặp ga: giá từng chỗ tính theo quãng đường khách đi, mà chuyến
+   * tàu thì không biết khách xuống ga nào. Cùng một giường tầng 1 toa 11,
+   * Hà Nội – Vinh và Hà Nội – Sài Gòn là hai giá khác hẳn nhau.
+   */
+  getCarriages: (
+    tripId: string,
+    seatClass: SeatClassCode,
+    route: { from: string; to: string },
+    o?: CallOptions,
+  ) =>
     USE_MOCK
       ? mockApi.getCarriages(tripId, seatClass)
-      : request<Carriage[]>(`/trips/${tripId}/carriages${qs({ seatClass })}`, o),
+      : request<Carriage[]>(`/trips/${tripId}/carriages${qs({ seatClass, ...route })}`, o),
 
   /** Giữ chỗ — luôn kèm Idempotency-Key để double-click không tạo hai lượt giữ */
   holdSeats: (
-    input: { tripId: string; seatClass: SeatClassCode; seatIds: string[] },
+    input: { tripId: string; seatClass: SeatClassCode; seatIds: string[]; from: string; to: string },
     o?: CallOptions,
   ) =>
     USE_MOCK
