@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * Buoc cuoi cua vong doi: doi luot giu cho thanh don hang.
  *
- *   POST /orders                   { holdCode } -> tao don
+ *   POST /orders                   { holdId } -> tao don
  *   GET  /orders/{orderNumber}     tra cuu don
  */
 @RestController
@@ -27,7 +27,7 @@ public class OrderController {
 
     @PostMapping
     public ResultMessage<OrderDTO> create(@Valid @RequestBody CreateOrderRequest request) {
-        return toResponse(orderAppService.createFromHold(request.getHoldCode()));
+        return toResponse(orderAppService.createFromHold(request.getHoldId()));
     }
 
     @GetMapping("/{orderNumber}")
@@ -39,6 +39,7 @@ public class OrderController {
         return switch (result.getStatus()) {
             case SUCCESS          -> ResultUtil.data(result.getOrder());
             case HOLD_NOT_FOUND   -> ResultUtil.error(404, "Khong tim thay luot giu cho");
+            case ORDER_NOT_FOUND  -> ResultUtil.error(404, "Khong tim thay don hang");
             case TICKET_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay ve");
             // 410 Gone: tung ton tai, gio mat roi -> client hien "Het gio giu cho"
             case HOLD_EXPIRED     -> ResultUtil.error(410, "Het gio giu cho, moi ban chon lai");

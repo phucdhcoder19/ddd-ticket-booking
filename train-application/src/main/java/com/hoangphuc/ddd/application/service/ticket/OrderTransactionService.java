@@ -3,6 +3,7 @@ package com.hoangphuc.ddd.application.service.ticket;
 import com.hoangphuc.ddd.domain.model.entity.Hold;
 import com.hoangphuc.ddd.domain.model.entity.TicketOrder;
 import com.hoangphuc.ddd.domain.repository.HoldRepository;
+import com.hoangphuc.ddd.domain.repository.SeatRepository;
 import com.hoangphuc.ddd.domain.repository.TicketOrderRepository;
 import com.hoangphuc.ddd.domain.service.TicketDetailDomainService;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class OrderTransactionService {
     private final TicketDetailDomainService ticketDetailDomainService;
     private final TicketOrderRepository ticketOrderRepository;
     private final HoldRepository holdRepository;
+    private final SeatRepository seatRepository;
 
     /** Bật true trong application.yml để cố tình gây lỗi SAU khi trừ kho -> xem rollback. */
     @Value("${app.demo.fail-after-deduct:false}")
@@ -80,22 +82,26 @@ public class OrderTransactionService {
     /**
      * BÀI 18 — BƯỚC CUỐI: đổi lượt giữ chỗ thành đơn hàng.
      *
-     * KHÔNG TRỪ KHO ở đây. Kho đã bị trừ từ lúc POST /holds rồi. Bước này chỉ
-     * chuyển quyền sở hữu mấy chỗ đó từ "đang giữ tạm" sang "đã bán". Trừ
-     * thêm lần nữa là bán 1 vé mà mất 2 chỗ — chỗ dễ sai nhất của mô hình này.
+     * KHÔNG GIÀNH LẠI GHẾ ở đây. Ghế đã bị chiếm từ lúc POST /holds rồi.
+     * Bước này chỉ chuyển quyền sở hữu mấy chỗ đó từ "đang giữ tạm" sang
+     * "đã bán" — chuyển trạng thái, không phải chiếm thêm.
      *
      * markUsed() có WHERE status = 0 AND expireAt > now. Nó là cuộc đua giữa
      * khách bấm xác nhận ở giây 599 và job quét ở giây 600:
-     *   - khách thắng -> job thấy 0 dòng, không hoàn kho, khách giữ vé
-     *   - job thắng   -> ở đây nhận 0 dòng, KHÔNG tạo đơn, tầng trên hoàn tiền
+     *   - khách thắng -> job thấy 0 dòng, không trả ghế, khách giữ vé
+     *   - job thắng   -> ở đây nhận 0 dòng, KHÔNG tạo đơn, tầng trên báo hết giờ
      *
-     * Thiếu mệnh đề đó thì tệ nhất: khách trả tiền xong, vé vẫn được trả về
+     * Thiếu mệnh đề đó thì tệ nhất: khách trả tiền xong, ghế vẫn được trả về
      * kho bán cho người thứ hai. Một chỗ, hai người cầm vé.
+     *
+     * Câu cuối kiểm sold == seatCount là một cái chốt an toàn, không phải
+     * thừa: nếu vì lý do nào đó một ghế đã rời khỏi lượt giữ này, đơn hàng
+     * sẽ thu tiền nhiều hơn số chỗ thật sự giao được. Thà rollback.
      *
      * @return đơn vừa tạo, hoặc null nếu lượt giữ chỗ đã hết hạn / đã dùng
      */
     @Transactional(rollbackFor = Exception.class)
-    public TicketOrder convertHoldToOrder(Hold hold, BigDecimal unitPrice) {
+    public TicketOrder convertSeatHoldToOrder(Hold hold) {
         LocalDateTime now = LocalDateTime.now();
 
         int changed = holdRepository.markUsed(hold.getId(), now);
@@ -104,23 +110,34 @@ public class OrderTransactionService {
             return null;
         }
 
-        TicketOrder order = new TicketOrder()
+        TicketOrder order = ticketOrderRepository.save(new TicketOrder()
                 .setOrderNumber(generateOrderNumber())
                 .setUserId(hold.getUserId())
-                .setTicketId(hold.getTicketId())
-                .setQuantity(hold.getQuantity())
-                .setUnitPrice(unitPrice)
-                .setTotalAmount(unitPrice.multiply(BigDecimal.valueOf(hold.getQuantity())))
+                .setTripId(hold.getTripId())
+                .setFromCode(hold.getFromCode())
+                .setToCode(hold.getToCode())
+                .setQuantity(hold.getSeatCount())
+                // Số tiền lấy từ hold, KHÔNG tính lại: giá đã chốt lúc khách
+                // bấm chọn chỗ. Tính lại ở đây là mở cửa cho chuyện khách
+                // thấy một giá lúc chọn và bị trừ một giá khác lúc trả tiền.
+                .setTotalAmount(BigDecimal.valueOf(hold.getTotalAmount()))
                 // Chua co cong thanh toan that, nen xac nhan la coi nhu da tra tien.
                 // Bai 25 se chen buoc thanh toan vao giua: hold -> payment -> order.
                 .setOrderStatus(TicketOrder.STATUS_PAID)
+                .setPaidAt(now)
                 .setCreatedAt(now)
-                .setUpdatedAt(now);
+                .setUpdatedAt(now));
 
-        TicketOrder saved = ticketOrderRepository.save(order);
-        log.info("[TX] hold -> don hang OK | holdCode={} orderNumber={}",
-                hold.getHoldCode(), saved.getOrderNumber());
-        return saved;
+        int sold = seatRepository.sellByHold(hold.getId(), order.getId());
+        if (sold != hold.getSeatCount()) {
+            throw new IllegalStateException(
+                    "Don " + order.getOrderNumber() + " can " + hold.getSeatCount()
+                            + " cho nhung chi ban duoc " + sold);
+        }
+
+        log.info("[TX] hold -> don hang OK | holdCode={} orderNumber={} so cho={}",
+                hold.getHoldCode(), order.getOrderNumber(), sold);
+        return order;
     }
 
     private String generateOrderNumber() {

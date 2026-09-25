@@ -11,6 +11,12 @@ public interface TicketDetailDomainService {
     boolean decreaseStock(Long ticketId, int quantity);
     boolean increaseStock(Long ticketId, int quantity);
 
-    /** Dot mo ban dang co hieu luc tai thoi diem "now". */
+    /**
+     * Dot mo ban de HIEN THI: uu tien dot sap toi, de trang chu dem nguoc.
+     * KHONG dung lam cong chan mua — xem isSaleOpen().
+     */
     SaleWindow resolveSaleWindow(LocalDateTime now);
+
+    /** Ngay luc nay co dang mo ban khong. Day moi la cong chan mua. */
+    boolean isSaleOpen(LocalDateTime now);
 }

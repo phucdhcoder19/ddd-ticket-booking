@@ -17,6 +17,20 @@ import java.time.LocalDateTime;
  * Tách hai thứ ra vì vòng đời khác nhau. Nhét chung một bảng thì bạn có một
  * đống dòng PENDING vừa là "đang xem" vừa là "đã mua chưa trả tiền" — không
  * phân biệt được, và báo cáo doanh thu phải lọc rác.
+ *
+ * ──────────────────────────────────────────────────────────────────────────
+ * GIỮ TỪNG GHẾ, KHÔNG GIỮ "N CHỖ BẤT KỲ"
+ *
+ * Bản đầu của bảng này giữ theo số lượng: ticketId + quantity, kho là một
+ * con số. Mô hình đó đúng với vé hội chợ, sai với vé tàu — khách chọn đúng
+ * giường tầng 1 khoang 3 toa 11, không chọn "một chỗ nằm nào đó".
+ *
+ * Nên Hold KHÔNG còn cột quantity. Danh sách ghế nằm ở phía bảng seat
+ * (seat.hold_id trỏ về đây), vì ghế mới là thứ có trạng thái cần khoá.
+ * Muốn biết lượt này giữ những chỗ nào: SELECT * FROM seat WHERE hold_id = ?
+ *
+ * seatCount và totalAmount là số CHỐT LẠI lúc giữ, giữ ở đây để không phải
+ * đếm và tính giá lại mỗi lần client hỏi đồng hồ đếm ngược (mỗi 5 giây).
  */
 @Data
 @Accessors(chain = true)
@@ -48,12 +62,30 @@ public class Hold {
     private String holdCode;
 
     @Column(nullable = false)
-    private Long ticketId;
-
-    @Column(nullable = false)
     private Long userId;
 
-    private int quantity;
+    /** Chuyến đang giữ chỗ. Ghế chỉ có nghĩa trong phạm vi một chuyến. */
+    @Column(nullable = false)
+    private Long tripId;
+
+    /**
+     * HÀNH TRÌNH của khách, không phải của đoàn tàu.
+     *
+     * SE1 chạy Hà Nội – Sài Gòn nhưng khách có thể chỉ đi Huế – Đà Nẵng, và
+     * giá vé tính theo đúng quãng đó. Không lưu cặp ga vào hold thì tới bước
+     * tạo đơn không còn cách nào tính lại đúng số tiền.
+     */
+    @Column(nullable = false, length = 8)
+    private String fromCode;
+
+    @Column(nullable = false, length = 8)
+    private String toCode;
+
+    /** Số ghế đang giữ — chốt lúc giữ, để khỏi COUNT lại mỗi lần polling. */
+    private int seatCount;
+
+    /** Tổng tiền tạm tính, chưa trừ giảm giá của từng hành khách. */
+    private long totalAmount;
 
     @Column(nullable = false)
     private int status;

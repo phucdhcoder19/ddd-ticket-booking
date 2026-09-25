@@ -38,6 +38,28 @@ public class TicketDetailDomainServiceImpl implements TicketDetailDomainService 
     }
 
     /**
+     * LUẬT NGHIỆP VỤ: ngay lúc này có được mua không.
+     *
+     * Tách hẳn khỏi resolveSaleWindow() dù hai thứ nghe giống nhau, vì
+     * chúng trả lời hai câu hỏi khác nhau:
+     *
+     *   resolveSaleWindow  "màn hình nên đếm ngược tới mốc nào"
+     *   isSaleOpen         "người này có được đặt chỗ ngay bây giờ không"
+     *
+     * Chúng lệch nhau ở đúng một tình huống, và tình huống đó là bình
+     * thường chứ không hiếm: đợt 1 đang bán, đợt 2 đã lên lịch cho tháng
+     * sau. resolveSaleWindow trả về "chưa mở, đếm ngược tới đợt 2" — đúng
+     * với cái đồng hồ trên trang chủ. Nếu lấy luôn nó làm cổng chặn thì
+     * toàn bộ khách của đợt 1 bị từ chối, chỉ vì có một đợt khác xếp sau.
+     */
+    @Override
+    public boolean isSaleOpen(LocalDateTime now) {
+        return ticketDetailRepository.findLatestOpened(now)
+                .filter(ticket -> !ticket.isSaleEnded(now))
+                .isPresent();
+    }
+
+    /**
      * LUẬT NGHIỆP VỤ: đợt mở bán nào đang có hiệu lực.
      *
      * Thứ tự ưu tiên — người dùng quan tâm "còn bao lâu nữa được mua":

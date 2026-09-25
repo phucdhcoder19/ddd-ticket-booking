@@ -1,22 +1,30 @@
 package com.hoangphuc.ddd.application.service.hold.impl;
 
+import com.hoangphuc.ddd.application.model.HoldCommand;
 import com.hoangphuc.ddd.application.model.HoldDTO;
+import com.hoangphuc.ddd.application.model.HoldItemDTO;
 import com.hoangphuc.ddd.application.model.HoldResult;
 import com.hoangphuc.ddd.application.service.hold.HoldAppService;
 import com.hoangphuc.ddd.application.service.hold.HoldTransactionService;
-import com.hoangphuc.ddd.application.service.ticket.cache.StockCacheService;
-import com.hoangphuc.ddd.application.service.ticket.cache.TicketDetailCacheService;
+import com.hoangphuc.ddd.application.service.hold.SeatUnavailableException;
+import com.hoangphuc.ddd.application.service.pricing.Journey;
+import com.hoangphuc.ddd.application.service.pricing.JourneyPricingService;
 import com.hoangphuc.ddd.domain.model.entity.Hold;
-import com.hoangphuc.ddd.domain.model.entity.TicketDetail;
+import com.hoangphuc.ddd.domain.model.entity.Seat;
+import com.hoangphuc.ddd.domain.model.entity.Trip;
 import com.hoangphuc.ddd.domain.repository.HoldRepository;
+import com.hoangphuc.ddd.domain.repository.SeatRepository;
+import com.hoangphuc.ddd.domain.repository.TripRepository;
+import com.hoangphuc.ddd.domain.service.TicketDetailDomainService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,10 +34,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class HoldAppServiceImpl implements HoldAppService {
 
-    private final TicketDetailCacheService ticketDetailCacheService;
-    private final StockCacheService stockCacheService;
-    private final HoldTransactionService holdTransactionService;
+    private final TripRepository tripRepository;
+    private final SeatRepository seatRepository;
     private final HoldRepository holdRepository;
+    private final HoldTransactionService holdTransactionService;
+    private final JourneyPricingService journeyPricingService;
+    private final TicketDetailDomainService ticketDetailDomainService;
 
     /**
      * Giữ bao lâu. Kiểu Duration chứ không phải long phút, để cấu hình viết
@@ -44,65 +54,75 @@ public class HoldAppServiceImpl implements HoldAppService {
     private int releaseBatch;
 
     /**
-     * Luồng giữ chỗ — cùng hình dạng với placeOrder():
+     * Luồng giữ chỗ theo ghế:
      *
-     *   ⓪ cổng nghiệp vụ    <- chưa đụng kho, thoát tự do
-     *   ① Redis trừ kho     <- TỪ ĐÂY mọi đường thoát phải restore()
-     *   ②③ MySQL 1 transaction: trừ kho + ghi hold
+     *   ⓪ cổng nghiệp vụ   - chưa đụng tới ghế nào, thoát tự do
+     *   ① 1 transaction    - ghi hold + giành ghế, hỏng thì rollback cả hai
+     *
+     * Ngắn hơn hẳn bản giữ theo số lượng trước đây, vì KHÔNG CÒN REDIS.
+     * Ở mô hình đếm kho, Redis đứng trước MySQL để chặn sớm hàng nghìn lượt
+     * tranh nhau một con số. Ở mô hình theo ghế thì mỗi ghế là một dòng
+     * riêng, hai khách chọn hai ghế khác nhau không hề đụng nhau — chỉ khi
+     * chọn TRÙNG ĐÚNG một ghế mới phải phân xử, và lúc đó câu UPDATE ...
+     * WHERE status = 0 của MySQL đã đủ làm trọng tài. Thêm Redis vào chỉ là
+     * thêm một nguồn sự thật thứ hai phải giữ cho khớp.
      */
     @Override
-    public HoldResult createHold(Long ticketId, Long userId, int quantity) {
-        log.info("[HOLD] createHold | ticketId={} userId={} qty={}", ticketId, userId, quantity);
+    public HoldResult createHold(HoldCommand command) {
+        log.info("[HOLD] createHold | trip={} hang={} cho={} {}->{}",
+                command.tripId(), command.seatClass(), command.seatIds(),
+                command.fromCode(), command.toCode());
 
-        // ===== ⓪ Cổng nghiệp vụ =====
-        TicketDetail detail = ticketDetailCacheService.getTicketDetail(ticketId);
-        if (detail == null || detail.effectivePrice() == null) {
-            return HoldResult.fail(HoldResult.Status.TICKET_NOT_FOUND);
+        if (command.seatIds() == null || command.seatIds().isEmpty()) {
+            return HoldResult.fail(HoldResult.Status.SEAT_TAKEN);
         }
+
+        // ===== Cổng nghiệp vụ =====
+        Optional<Trip> found = tripRepository.findById(command.tripId());
+        if (found.isEmpty()) {
+            return HoldResult.fail(HoldResult.Status.TRIP_NOT_FOUND);
+        }
+        Trip trip = found.get();
+
+        Optional<Journey> journey = journeyPricingService.resolve(
+                command.fromCode(), command.toCode(), trip.getServiceDate());
+        if (journey.isEmpty()) {
+            return HoldResult.fail(HoldResult.Status.INVALID_ROUTE);
+        }
+
         LocalDateTime now = LocalDateTime.now();
-        if (!detail.isOpenedForSale(now)) {
+        // isSaleOpen(), KHÔNG phải resolveSaleWindow(): cái sau ưu tiên đợt
+        // sắp tới để trang chủ đếm ngược, nên nó trả "chưa mở" ngay cả khi
+        // đợt hiện tại đang bán. Dùng nhầm là khoá cửa đúng lúc đông khách.
+        if (!ticketDetailDomainService.isSaleOpen(now)) {
             return HoldResult.fail(HoldResult.Status.NOT_ON_SALE);
         }
-        if (detail.isSaleEnded(now)) {
+        // Tàu chạy hôm qua thì không còn gì để bán. Phải kiểm riêng chứ không
+        // dựa vào việc ghế còn trống hay không: ghế của chuyến đã chạy xong
+        // vẫn đang ở trạng thái trống.
+        if (trip.getServiceDate().isBefore(LocalDate.now())) {
             return HoldResult.fail(HoldResult.Status.SALE_ENDED);
         }
-        BigDecimal unitPrice = detail.effectivePrice();
 
-        // ===== ① Redis — chặn sớm =====
-        int redisResult = stockCacheService.deduct(ticketId, quantity);
-        if (redisResult == -1) {
-            if (!stockCacheService.warmUp(ticketId)) {
-                return HoldResult.fail(HoldResult.Status.TICKET_NOT_FOUND);
-            }
-            redisResult = stockCacheService.deduct(ticketId, quantity);
-        }
-        if (redisResult == 0) {
-            return HoldResult.fail(HoldResult.Status.OUT_OF_STOCK);
-        }
-        // Redis ĐÃ trừ -> mọi đường thoát thất bại đều phải restore()
-
-        // ===== 23 MySQL =====
+        // ===== Một transaction =====
         String holdCode = "HOLD-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase();
         LocalDateTime expireAt = now.plus(holdDuration);
         try {
-            Hold hold = holdTransactionService
-                    .deductStockAndCreateHold(ticketId, userId, quantity, holdCode, expireAt);
+            Hold hold = holdTransactionService.createSeatHold(
+                    command, journey.get(), holdCode, expireAt);
 
-            if (hold == null) {
-                stockCacheService.restore(ticketId, quantity);
-                log.warn("[HOLD] MySQL tu choi, da hoan Redis | ticketId={}", ticketId);
-                return HoldResult.fail(HoldResult.Status.OUT_OF_STOCK);
-            }
+            log.info("[HOLD] giu {} cho OK | holdCode={} het han luc {}",
+                    hold.getSeatCount(), holdCode, expireAt);
+            return HoldResult.success(toDTO(hold, journey.get(), now));
 
-            ticketDetailCacheService.evict(ticketId);
-            log.info("[HOLD] giu cho OK | holdCode={} het han luc {}", holdCode, expireAt);
-            return HoldResult.success(toDTO(hold, detail, unitPrice, now));
+        } catch (SeatUnavailableException e) {
+            // Transaction ĐÃ ROLLBACK: dòng hold biến mất, những ghế vừa kịp
+            // giành được cũng trở lại trống. Không phải dọn tay gì cả.
+            log.info("[HOLD] cho da co nguoi giu | trip={} {}", command.tripId(), e.getMessage());
+            return HoldResult.fail(HoldResult.Status.SEAT_TAKEN);
 
         } catch (Exception e) {
-            // Tới đây nghĩa là transaction ĐÃ ROLLBACK: kho MySQL về số cũ.
-            // Chỉ còn Redis chưa hoàn -> hoàn tay.
-            stockCacheService.restore(ticketId, quantity);
-            log.error("[HOLD] loi, MySQL da rollback, da hoan Redis | ticketId={}", ticketId, e);
+            log.error("[HOLD] loi, MySQL da rollback | trip={}", command.tripId(), e);
             return HoldResult.fail(HoldResult.Status.ERROR);
         }
     }
@@ -121,10 +141,7 @@ public class HoldAppServiceImpl implements HoldAppService {
         if (!hold.isHolding(now)) {
             return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
         }
-
-        TicketDetail detail = ticketDetailCacheService.getTicketDetail(hold.getTicketId());
-        BigDecimal unitPrice = detail != null ? detail.effectivePrice() : BigDecimal.ZERO;
-        return HoldResult.success(toDTO(hold, detail, unitPrice, now));
+        return HoldResult.success(toDTO(hold, journeyOf(hold).orElse(null), now));
     }
 
     @Override
@@ -133,14 +150,12 @@ public class HoldAppServiceImpl implements HoldAppService {
         if (found.isEmpty()) {
             return HoldResult.fail(HoldResult.Status.HOLD_NOT_FOUND);
         }
-        Hold hold = found.get();
 
-        boolean released = holdTransactionService.releaseOne(hold);
+        boolean released = holdTransactionService.releaseOne(found.get());
         if (!released) {
             // 0 dòng: job vừa dọn xong, hoặc đã đổi thành đơn hàng.
             return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
         }
-        restoreCache(hold);
 
         log.info("[HOLD] user huy | holdCode={}", holdCode);
         return HoldResult.success(null);
@@ -153,10 +168,9 @@ public class HoldAppServiceImpl implements HoldAppService {
         for (Hold hold : expired) {
             try {
                 if (holdTransactionService.releaseOne(hold)) {
-                    restoreCache(hold);
                     count++;
-                    log.info("[HOLD-JOB] thu hoi | holdCode={} ticketId={} qty={}",
-                            hold.getHoldCode(), hold.getTicketId(), hold.getQuantity());
+                    log.info("[HOLD-JOB] thu hoi | holdCode={} trip={} so cho={}",
+                            hold.getHoldCode(), hold.getTripId(), hold.getSeatCount());
                 }
             } catch (Exception e) {
                 // Một lượt lỗi không được làm chết cả lô — lượt quét sau thử lại.
@@ -166,30 +180,39 @@ public class HoldAppServiceImpl implements HoldAppService {
         return count;
     }
 
-    /**
-     * Hoàn Redis SAU KHI transaction MySQL đã commit.
-     *
-     * Không gộp vào trong transaction: nếu transaction rollback sau đó thì
-     * Redis đã cộng rồi, không rollback theo được -> Redis nhiều hơn MySQL
-     * -> bán quá số vé thật.
-     */
-    private void restoreCache(Hold hold) {
-        stockCacheService.restore(hold.getTicketId(), hold.getQuantity());
-        ticketDetailCacheService.evict(hold.getTicketId());
+    /** Dựng lại hành trình đã lưu trên hold, để tính đúng giá từng chỗ. */
+    private Optional<Journey> journeyOf(Hold hold) {
+        return tripRepository.findById(hold.getTripId())
+                .flatMap(trip -> journeyPricingService.resolve(
+                        hold.getFromCode(), hold.getToCode(), trip.getServiceDate()));
     }
 
-    private HoldDTO toDTO(Hold hold, TicketDetail detail, BigDecimal unitPrice, LocalDateTime now) {
+    private HoldDTO toDTO(Hold hold, Journey journey, LocalDateTime now) {
         HoldDTO dto = new HoldDTO();
-        dto.setHoldCode(hold.getHoldCode());
-        dto.setTicketId(hold.getTicketId());
-        dto.setTicketName(detail != null ? detail.getName() : null);
-        dto.setQuantity(hold.getQuantity());
-        dto.setUnitPrice(unitPrice);
-        dto.setTotalAmount(unitPrice.multiply(BigDecimal.valueOf(hold.getQuantity())));
+        dto.setHoldId(hold.getHoldCode());
+        dto.setTripId(String.valueOf(hold.getTripId()));
+        dto.setFromCode(hold.getFromCode());
+        dto.setToCode(hold.getToCode());
+        dto.setItems(itemsOf(hold, journey));
+        dto.setTotalAmount(hold.getTotalAmount());
         dto.setExpiresAt(hold.getExpireAt());
         dto.setServerNow(now);
         dto.setSecondsLeft(hold.secondsLeft(now));
         dto.setStatus(hold.isHolding(now) ? "HOLDING" : "EXPIRED");
         return dto;
+    }
+
+    private List<HoldItemDTO> itemsOf(Hold hold, Journey journey) {
+        List<HoldItemDTO> items = new ArrayList<>();
+        for (Seat seat : seatRepository.findByHold(hold.getId())) {
+            HoldItemDTO item = new HoldItemDTO();
+            item.setSeatId(seat.getSeatCode());
+            item.setSeatLabel(seat.getLabel());
+            item.setCarriageNumber(seat.getCarriageNumber());
+            item.setSeatClass(seat.getSeatClass());
+            item.setPrice(journey != null ? journeyPricingService.fareOf(journey, seat) : 0L);
+            items.add(item);
+        }
+        return items;
     }
 }

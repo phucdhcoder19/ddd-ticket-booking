@@ -1,5 +1,6 @@
 package com.hoangphuc.ddd.controller.http;
 
+import com.hoangphuc.ddd.application.model.HoldCommand;
 import com.hoangphuc.ddd.application.model.HoldDTO;
 import com.hoangphuc.ddd.application.model.HoldResult;
 import com.hoangphuc.ddd.application.service.hold.HoldAppService;
@@ -11,12 +12,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+
 /**
  * Vòng đời một lượt giữ chỗ.
  *
- *   POST   /holds           chọn vé  -> trừ kho, bắt đầu đếm ngược
+ *   POST   /holds           chọn chỗ -> giành ghế, bắt đầu đếm ngược
  *   GET    /holds/{code}    polling  -> còn bao nhiêu giây (theo giờ SERVER)
- *   DELETE /holds/{code}    quay lại -> trả kho ngay
+ *   DELETE /holds/{code}    quay lại -> trả ghế ngay
  */
 @RestController
 @RequestMapping("/holds")
@@ -24,13 +29,29 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class HoldController {
 
+    /**
+     * Chưa có đăng nhập. Mọi lượt giữ chỗ đều ghi về một người dùng giả.
+     *
+     * Để hằng số ở đây, KHÔNG nhận userId từ body: client gửi userId nào
+     * cũng được nghĩa là ai cũng đặt vé hộ người khác, và tệ hơn, xem được
+     * vé của người khác khi có màn "vé của tôi". Khi cắm đăng nhập vào thì
+     * chỗ cần sửa đúng là một dòng này.
+     */
+    private static final Long DEMO_USER_ID = 1L;
+
     private final HoldAppService holdAppService;
 
     @PostMapping
     public ResultMessage<HoldDTO> create(@Valid @RequestBody CreateHoldRequest request) {
-        HoldResult result = holdAppService.createHold(
-                request.getTicketId(), request.getUserId(), request.getQuantity());
-        return toResponse(result);
+        HoldCommand command = new HoldCommand(
+                request.getTripId(),
+                request.getSeatClass(),
+                distinct(request.getSeatIds()),
+                request.getFrom(),
+                request.getTo(),
+                DEMO_USER_ID);
+
+        return toResponse(holdAppService.createHold(command));
     }
 
     @GetMapping("/{holdCode}")
@@ -44,6 +65,18 @@ public class HoldController {
     }
 
     /**
+     * Bỏ mã chỗ trùng nhau trước khi xuống tầng dưới.
+     *
+     * Câu UPDATE giành ghế đếm số DÒNG sửa được, nên xin ["C3-1","C3-1"] sẽ
+     * sửa 1 dòng trong khi tầng trên chờ 2 — thành ra báo "chỗ đã có người
+     * giữ" cho chính cái ghế vừa giữ được. Lọc ở biên thay vì bắt tầng dưới
+     * phải đề phòng dữ liệu bẩn.
+     */
+    private List<String> distinct(List<String> seatIds) {
+        return seatIds == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(seatIds));
+    }
+
+    /**
      * Chỉ controller mới biết tới con số HTTP. Tầng dưới trả về enum, vì nếu
      * mai luồng này chạy qua Kafka thay vì HTTP thì enum vẫn dùng được còn
      * số 409 thì vô nghĩa.
@@ -54,14 +87,15 @@ public class HoldController {
      */
     private ResultMessage<HoldDTO> toResponse(HoldResult result) {
         return switch (result.getStatus()) {
-            case SUCCESS          -> ResultUtil.data(result.getHold());
-            case OUT_OF_STOCK     -> ResultUtil.error(409, "Het ve");
-            case NOT_ON_SALE      -> ResultUtil.error(409, "Ve chua mo ban");
-            case SALE_ENDED       -> ResultUtil.error(409, "Da het gio ban");
-            case TICKET_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay ve");
-            case HOLD_NOT_FOUND   -> ResultUtil.error(404, "Khong tim thay luot giu cho");
-            case HOLD_EXPIRED     -> ResultUtil.error(410, "Het gio giu cho, moi ban chon lai");
-            case ERROR            -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
+            case SUCCESS        -> ResultUtil.data(result.getHold());
+            case SEAT_TAKEN     -> ResultUtil.error(409, "Cho ban chon vua co nguoi giu, moi chon cho khac");
+            case NOT_ON_SALE    -> ResultUtil.error(409, "Chua toi gio mo ban");
+            case SALE_ENDED     -> ResultUtil.error(409, "Chuyen nay da chay, khong con ban ve");
+            case TRIP_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay chuyen tau");
+            case INVALID_ROUTE  -> ResultUtil.error(400, "Ga di hoac ga den khong hop le");
+            case HOLD_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay luot giu cho");
+            case HOLD_EXPIRED   -> ResultUtil.error(410, "Het gio giu cho, moi ban chon lai");
+            case ERROR          -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
         };
     }
 }

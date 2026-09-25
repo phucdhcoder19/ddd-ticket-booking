@@ -14,8 +14,12 @@ public class HoldResult {
 
     public enum Status {
         SUCCESS,
-        OUT_OF_STOCK,
-        TICKET_NOT_FOUND,
+        /** Không có chuyến đó, hoặc chuyến chưa sinh xong ghế. */
+        TRIP_NOT_FOUND,
+        /** Mã ga sai, hoặc ga đi trùng ga đến. */
+        INVALID_ROUTE,
+        /** Có người khác giành mất ít nhất một trong những chỗ đã chọn. */
+        SEAT_TAKEN,
         NOT_ON_SALE,
         SALE_ENDED,
         HOLD_NOT_FOUND,

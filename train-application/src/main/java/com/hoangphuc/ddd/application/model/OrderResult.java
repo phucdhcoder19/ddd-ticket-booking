@@ -11,6 +11,8 @@ public class OrderResult {
     public enum Status {
         SUCCESS,
         HOLD_NOT_FOUND,
+        /** Tra cuu mot ma don khong ton tai. */
+        ORDER_NOT_FOUND,
         /** Hold đã hết hạn, đã bị job thu hồi, hoặc đã đổi thành đơn rồi. */
         HOLD_EXPIRED,
         TICKET_NOT_FOUND,

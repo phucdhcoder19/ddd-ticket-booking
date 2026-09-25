@@ -2,26 +2,33 @@ package com.hoangphuc.ddd.application.model;
 
 import lombok.Data;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class HoldDTO {
 
-    private String holdCode;
-    private Long ticketId;
-    private String ticketName;
-    private int quantity;
-    private BigDecimal unitPrice;
-    private BigDecimal totalAmount;
+    /** Ma cong khai cua luot giu cho. Khong bao gio la id tu tang. */
+    private String holdId;
 
-    /** Hết hạn lúc nào — client vẽ đồng hồ từ mốc này. */
+    private String tripId;
+
+    private String fromCode;
+    private String toCode;
+
+    /** Nhung cho dang giu, kem gia tung cho. */
+    private List<HoldItemDTO> items;
+
+    /** Tong tien tam tinh — chua tru giam gia cua tung hanh khach. */
+    private long totalAmount;
+
+    /** Het han luc nao — client ve dong ho tu moc nay. */
     private LocalDateTime expiresAt;
 
-    /** Giờ SERVER. Client phải trừ theo giờ này, không theo giờ máy mình. */
+    /** Gio SERVER. Client phai tru theo gio nay, khong theo gio may minh. */
     private LocalDateTime serverNow;
 
-    /** Tính sẵn cho client đỡ phải tự trừ hai mốc thời gian. */
+    /** Tinh san cho client do phai tu tru hai moc thoi gian. */
     private long secondsLeft;
 
     /** HOLDING | USED | RELEASED | EXPIRED */

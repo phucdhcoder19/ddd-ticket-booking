@@ -62,6 +62,12 @@ spring:
         pool:
           max-active: 50
 app:
+  pricing:
+    # Khung ngay cao diem Tet — nganh duong sat cong bo bang van ban,
+    # khong suy ra tu lich am. Ngoai khung nay he so = 1.0
+    peak-from: "2027-01-25"
+    peak-to: "2027-02-05"
+    peak-surcharge: 1.35
   hold:
     # Giu cho bao lau. Doi thanh 30s de xem job chay ma khong phai ngoi doi.
     duration: 10m

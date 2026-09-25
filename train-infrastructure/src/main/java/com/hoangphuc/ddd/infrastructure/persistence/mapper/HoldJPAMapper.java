@@ -34,7 +34,6 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
            "WHERE h.id = :holdId AND h.status = 0")
     int markReleased(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
 
-    @Modifying
     /**
      * Đổi lượt giữ chỗ thành đơn hàng.
      *
@@ -47,6 +46,7 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
      * đọc rồi mới ghi là còn khe hở, gộp vào WHERE thì MySQL khoá dòng và
      * kiểm trên giá trị mới nhất.
      */
+    @Modifying
     @Query("UPDATE Hold h SET h.status = 1, h.updatedAt = :now " +
            "WHERE h.id = :holdId AND h.status = 0 AND h.expireAt > :now")
     int markUsed(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
