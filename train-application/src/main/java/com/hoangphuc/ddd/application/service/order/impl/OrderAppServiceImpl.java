@@ -7,6 +7,7 @@ import com.hoangphuc.ddd.application.service.order.OrderAppService;
 import com.hoangphuc.ddd.application.service.pricing.Journey;
 import com.hoangphuc.ddd.application.service.pricing.JourneyPricingService;
 import com.hoangphuc.ddd.application.service.ticket.OrderTransactionService;
+import com.hoangphuc.ddd.application.service.ticket.PassengersMissingException;
 import com.hoangphuc.ddd.domain.model.entity.Hold;
 import com.hoangphuc.ddd.domain.model.entity.Seat;
 import com.hoangphuc.ddd.domain.model.entity.TicketOrder;
@@ -41,9 +42,10 @@ public class OrderAppServiceImpl implements OrderAppService {
      *
      *   KHÔNG kiểm giờ mở bán  — đã kiểm lúc tạo hold
      *   KHÔNG giành ghế        — ghế đã thuộc về hold này rồi
-     *   KHÔNG tính lại tiền    — giá đã chốt và lưu trên hold
+     *   KHÔNG tính lại tiền    — giá đã chốt trên từng hành khách
      *
-     * Chỉ còn: giành quyền đổi trạng thái hold, rồi ghi đơn và sang tên ghế.
+     * Chỉ còn: giành quyền đổi trạng thái hold, kiểm đủ hành khách, rồi ghi
+     * đơn và sang tên ghế.
      */
     @Override
     public OrderResult createFromHold(String holdCode) {
@@ -64,6 +66,11 @@ public class OrderAppServiceImpl implements OrderAppService {
                 return OrderResult.fail(OrderResult.Status.HOLD_EXPIRED);
             }
             return OrderResult.success(toDTO(order));
+
+        } catch (PassengersMissingException e) {
+            // Đã rollback: hold về lại status 0, ghế vẫn giữ nguyên cho khách.
+            log.info("[ORDER] chua du hanh khach | {}", e.getMessage());
+            return OrderResult.fail(OrderResult.Status.PASSENGERS_MISSING);
 
         } catch (Exception e) {
             // Transaction đã ROLLBACK: hold về status 0, không có đơn, ghế

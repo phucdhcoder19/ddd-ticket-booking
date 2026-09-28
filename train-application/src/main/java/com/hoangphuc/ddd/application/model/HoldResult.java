@@ -24,6 +24,8 @@ public class HoldResult {
         SALE_ENDED,
         HOLD_NOT_FOUND,
         HOLD_EXPIRED,     // đã quá hạn hoặc đã bị đóng
+        /** Danh sách hành khách không khớp đúng từng ghế của lượt giữ. */
+        PASSENGER_MISMATCH,
         ERROR
     }
 

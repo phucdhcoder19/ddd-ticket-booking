@@ -15,6 +15,8 @@ public class OrderResult {
         ORDER_NOT_FOUND,
         /** Hold đã hết hạn, đã bị job thu hồi, hoặc đã đổi thành đơn rồi. */
         HOLD_EXPIRED,
+        /** Chưa nhập đủ hành khách cho từng ghế — hold vẫn còn, khách quay lại nhập được. */
+        PASSENGERS_MISSING,
         TICKET_NOT_FOUND,
         ERROR
     }

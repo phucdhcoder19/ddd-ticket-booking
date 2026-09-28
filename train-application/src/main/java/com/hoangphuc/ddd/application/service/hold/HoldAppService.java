@@ -2,6 +2,9 @@ package com.hoangphuc.ddd.application.service.hold;
 
 import com.hoangphuc.ddd.application.model.HoldCommand;
 import com.hoangphuc.ddd.application.model.HoldResult;
+import com.hoangphuc.ddd.application.model.PassengerCommand;
+
+import java.util.List;
 
 public interface HoldAppService {
 
@@ -10,6 +13,9 @@ public interface HoldAppService {
 
     /** Client polling để đồng bộ đồng hồ đếm ngược với giờ server. */
     HoldResult getHold(String holdCode);
+
+    /** Ghi tên người ngồi từng ghế. Gọi lại nhiều lần được, lần sau thay lần trước. */
+    HoldResult savePassengers(String holdCode, List<PassengerCommand> passengers);
 
     /** User bấm quay lại: trả chỗ ngay, không đợi hết giờ. */
     HoldResult releaseHold(String holdCode);

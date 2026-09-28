@@ -26,6 +26,12 @@ public interface HoldRepository {
 
     int markUsed(Long holdId, LocalDateTime now);
 
+    /**
+     * Khoá dòng hold tới hết transaction hiện tại, nếu nó còn đang giữ.
+     * 0 = đã hết hạn / đã dùng / đã huỷ -> không được sửa gì thêm.
+     */
+    int lockIfHolding(Long holdId, LocalDateTime now);
+
     /** Các lượt giữ chỗ đã quá hạn mà chưa ai dọn. */
     List<Hold> findExpired(LocalDateTime now, int limit);
 }

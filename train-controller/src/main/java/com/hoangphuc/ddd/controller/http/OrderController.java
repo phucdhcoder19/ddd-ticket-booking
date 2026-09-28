@@ -43,6 +43,9 @@ public class OrderController {
             case TICKET_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay ve");
             // 410 Gone: tung ton tai, gio mat roi -> client hien "Het gio giu cho"
             case HOLD_EXPIRED     -> ResultUtil.error(410, "Het gio giu cho, moi ban chon lai");
+            // 422 chu khong phai 409: 409 frontend hieu la "het ve", con day
+            // la du lieu chua du — cho van con, khach quay lai nhap la xong.
+            case PASSENGERS_MISSING -> ResultUtil.error(422, "Chua nhap du thong tin hanh khach cho tung cho");
             case ERROR            -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
         };
     }

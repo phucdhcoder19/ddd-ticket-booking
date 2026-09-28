@@ -4,7 +4,9 @@ import com.hoangphuc.ddd.application.model.HoldCommand;
 import com.hoangphuc.ddd.application.service.pricing.Journey;
 import com.hoangphuc.ddd.application.service.pricing.JourneyPricingService;
 import com.hoangphuc.ddd.domain.model.entity.Hold;
+import com.hoangphuc.ddd.domain.model.entity.HoldPassenger;
 import com.hoangphuc.ddd.domain.model.entity.Seat;
+import com.hoangphuc.ddd.domain.repository.HoldPassengerRepository;
 import com.hoangphuc.ddd.domain.repository.HoldRepository;
 import com.hoangphuc.ddd.domain.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class HoldTransactionService {
 
     private final HoldRepository holdRepository;
     private final SeatRepository seatRepository;
+    private final HoldPassengerRepository holdPassengerRepository;
     private final JourneyPricingService journeyPricingService;
 
     /**
@@ -86,6 +89,28 @@ public class HoldTransactionService {
         }
         hold.setTotalAmount(total);
         return holdRepository.save(hold);
+    }
+
+    /**
+     * GHI DANH SÁCH HÀNH KHÁCH — chỉ khi lượt giữ còn sống.
+     *
+     *   ① lockIfHolding(): còn hạn thì khoá dòng hold tới hết transaction
+     *   ② xoá danh sách cũ, ghi danh sách mới
+     *
+     * Kiểm "còn hạn" bằng if (hold.isHolding(now)) ở tầng trên là KHÔNG ĐỦ:
+     * giữa lúc đọc và lúc ghi, job có thể vừa thu hồi, hoặc tab khác của
+     * chính khách vừa bấm thanh toán. Gộp vào câu UPDATE thì MySQL kiểm trên
+     * giá trị mới nhất và giữ khoá cho tới lúc COMMIT.
+     *
+     * @return danh sách vừa ghi, hoặc null nếu lượt giữ không còn dùng được
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public List<HoldPassenger> replacePassengers(Hold hold, List<HoldPassenger> passengers) {
+        int locked = holdRepository.lockIfHolding(hold.getId(), LocalDateTime.now());
+        if (locked == 0) {
+            return null;
+        }
+        return holdPassengerRepository.replaceForHold(hold.getId(), passengers);
     }
 
     /**

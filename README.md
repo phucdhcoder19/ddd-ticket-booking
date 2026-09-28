@@ -28,6 +28,7 @@ The backend is a Spring Boot application organised in **DDD layers**. The fronte
 - **Seat map per carriage**: soft seats (2-2 layout), 6-berth and 4-berth sleeper compartments.
 - **Distance-based pricing**: fare = distance × class rate × berth-level factor × peak (Tết) surcharge.
 - **Seat holds with expiry**: selected seats are reserved for 10 minutes (configurable). A background job releases expired holds.
+- **Passenger details per seat**: one named passenger per held seat, with discounts (student, child, senior) calculated on the server.
 - **Hold → order conversion**: an order is created from a hold in a single transaction.
 - **Flash-sale "buy by quantity" flow**: Redis Lua stock deduction backed by a MySQL transaction, with compensation on failure.
 - **Sale window**: requests are blocked before the sale opens and after it closes, and the UI shows a countdown.
@@ -259,6 +260,7 @@ Seat classes: `SOFT_SEAT`, `BERTH_6`, `BERTH_4`.
 | POST   | `/api/holds`             | Hold seats                           |
 | GET    | `/api/holds/{holdCode}`  | Hold status and seconds remaining    |
 | DELETE | `/api/holds/{holdCode}`  | Cancel a hold and release its seats  |
+| PUT    | `/api/holds/{holdCode}/passengers` | Set one passenger per held seat (replaces the previous list) |
 
 ```json
 POST /api/holds
@@ -270,6 +272,18 @@ POST /api/holds
   "to": "DNA"
 }
 ```
+
+```json
+PUT /api/holds/HOLD-1A2B3C4D5E6F/passengers
+{
+  "passengers": [
+    { "seatId": "C7-1", "fullName": "Nguyễn Văn An", "idNumber": "001203004567", "phone": "0912345678", "discount": "STUDENT" },
+    { "seatId": "C7-2", "fullName": "Trần Thị Bình", "idNumber": "001203004568", "phone": "0912345678", "discount": "NONE" }
+  ]
+}
+```
+
+Each held seat needs exactly one passenger. The server applies discounts (`STUDENT` −10%, `CHILD` −25%, `SENIOR` −15%) and rounds to the nearest 1,000đ. `POST /orders` returns `422` until passengers are saved. The order total is the sum of the discounted prices.
 
 ### Orders
 
@@ -318,7 +332,7 @@ All Actuator endpoints are exposed:
 ## Known Limitations / Roadmap
 
 - **Waiting room is a pass-through.** A real queue needs a Redis sorted set for arrival order, a rate-controlled release, and — most importantly — `POST /holds` must **reject requests without an admitted token**. Otherwise anyone can bypass the queue by calling the API directly.
-- **Missing endpoints** the frontend already calls: `PUT /holds/{id}/passengers`, `GET /me/tickets`, `POST /tickets/{id}/refund`.
+- **Missing endpoints** the frontend already calls: `GET /me/tickets`, `POST /tickets/{id}/refund`.
 - **`Idempotency-Key`** is sent by the frontend on `POST /holds` and `POST /orders` but is not enforced by the backend yet.
 - **Stock warm-up** is hardcoded to ticket id `1` in `WarmUpStockJob`. It should select the tickets that are about to go on sale.
 - **Schema management** uses Hibernate `ddl-auto: update`. A migration tool such as Flyway should replace it before production.

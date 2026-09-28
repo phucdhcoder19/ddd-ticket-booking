@@ -41,6 +41,12 @@ public class HoldRepositoryImpl implements HoldRepository {
     }
 
     @Override
+    @Transactional
+    public int lockIfHolding(Long holdId, LocalDateTime now) {
+        return holdJPAMapper.lockIfHolding(holdId, now);
+    }
+
+    @Override
     public List<Hold> findExpired(LocalDateTime now, int limit) {
         return holdJPAMapper.findExpired(now, PageRequest.of(0, limit));
     }

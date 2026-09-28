@@ -1,7 +1,9 @@
 package com.hoangphuc.ddd.application.service.ticket;
 
 import com.hoangphuc.ddd.domain.model.entity.Hold;
+import com.hoangphuc.ddd.domain.model.entity.HoldPassenger;
 import com.hoangphuc.ddd.domain.model.entity.TicketOrder;
+import com.hoangphuc.ddd.domain.repository.HoldPassengerRepository;
 import com.hoangphuc.ddd.domain.repository.HoldRepository;
 import com.hoangphuc.ddd.domain.repository.SeatRepository;
 import com.hoangphuc.ddd.domain.repository.TicketOrderRepository;
@@ -14,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -36,6 +39,7 @@ public class OrderTransactionService {
     private final TicketDetailDomainService ticketDetailDomainService;
     private final TicketOrderRepository ticketOrderRepository;
     private final HoldRepository holdRepository;
+    private final HoldPassengerRepository holdPassengerRepository;
     private final SeatRepository seatRepository;
 
     /** Bật true trong application.yml để cố tình gây lỗi SAU khi trừ kho -> xem rollback. */
@@ -110,6 +114,20 @@ public class OrderTransactionService {
             return null;
         }
 
+        // Đọc hành khách SAU markUsed(): lúc này mình đang giữ khoá dòng
+        // hold, nên một lần PUT /passengers đang chạy dở hoặc đã xong hẳn,
+        // hoặc phải đợi mình xong — không bao giờ đọc phải danh sách ghi dở.
+        List<HoldPassenger> passengers = holdPassengerRepository.findByHold(hold.getId());
+        if (passengers.size() != hold.getSeatCount()) {
+            throw new PassengersMissingException(
+                    "Hold " + hold.getHoldCode() + " co " + hold.getSeatCount()
+                            + " cho nhung moi co " + passengers.size() + " hanh khach");
+        }
+        long payable = 0L;
+        for (HoldPassenger p : passengers) {
+            payable += p.getFinalPrice();
+        }
+
         TicketOrder order = ticketOrderRepository.save(new TicketOrder()
                 .setOrderNumber(generateOrderNumber())
                 .setUserId(hold.getUserId())
@@ -117,10 +135,11 @@ public class OrderTransactionService {
                 .setFromCode(hold.getFromCode())
                 .setToCode(hold.getToCode())
                 .setQuantity(hold.getSeatCount())
-                // Số tiền lấy từ hold, KHÔNG tính lại: giá đã chốt lúc khách
-                // bấm chọn chỗ. Tính lại ở đây là mở cửa cho chuyện khách
-                // thấy một giá lúc chọn và bị trừ một giá khác lúc trả tiền.
-                .setTotalAmount(BigDecimal.valueOf(hold.getTotalAmount()))
+                // Cộng giá ĐÃ CHỐT của từng hành khách, KHÔNG tính lại: giá
+                // ghế chốt lúc giữ chỗ, giảm giá chốt lúc nhập thông tin.
+                // Tính lại ở đây là mở cửa cho chuyện khách thấy một giá
+                // trên màn hình và bị trừ một giá khác lúc trả tiền.
+                .setTotalAmount(BigDecimal.valueOf(payable))
                 // Chua co cong thanh toan that, nen xac nhan la coi nhu da tra tien.
                 // Bai 25 se chen buoc thanh toan vao giua: hold -> payment -> order.
                 .setOrderStatus(TicketOrder.STATUS_PAID)
@@ -134,6 +153,7 @@ public class OrderTransactionService {
                     "Don " + order.getOrderNumber() + " can " + hold.getSeatCount()
                             + " cho nhung chi ban duoc " + sold);
         }
+        holdPassengerRepository.attachToOrder(hold.getId(), order.getId());
 
         log.info("[TX] hold -> don hang OK | holdCode={} orderNumber={} so cho={}",
                 hold.getHoldCode(), order.getOrderNumber(), sold);

@@ -4,12 +4,14 @@ import com.hoangphuc.ddd.application.model.HoldCommand;
 import com.hoangphuc.ddd.application.model.HoldDTO;
 import com.hoangphuc.ddd.application.model.HoldItemDTO;
 import com.hoangphuc.ddd.application.model.HoldResult;
+import com.hoangphuc.ddd.application.model.PassengerCommand;
 import com.hoangphuc.ddd.application.service.hold.HoldAppService;
 import com.hoangphuc.ddd.application.service.hold.HoldTransactionService;
 import com.hoangphuc.ddd.application.service.hold.SeatUnavailableException;
 import com.hoangphuc.ddd.application.service.pricing.Journey;
 import com.hoangphuc.ddd.application.service.pricing.JourneyPricingService;
 import com.hoangphuc.ddd.domain.model.entity.Hold;
+import com.hoangphuc.ddd.domain.model.entity.HoldPassenger;
 import com.hoangphuc.ddd.domain.model.entity.Seat;
 import com.hoangphuc.ddd.domain.model.entity.Trip;
 import com.hoangphuc.ddd.domain.repository.HoldRepository;
@@ -25,8 +27,12 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -142,6 +148,80 @@ public class HoldAppServiceImpl implements HoldAppService {
             return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
         }
         return HoldResult.success(toDTO(hold, journeyOf(hold).orElse(null), now));
+    }
+
+    /**
+     * Bước "nhập thông tin hành khách" giữa giữ chỗ và thanh toán.
+     *
+     *   ⓪ hold còn sống không        - đọc thường, chặn sớm phần lớn ca hết giờ
+     *   ① khớp đúng từng ghế          - mỗi ghế đúng một người, không thừa không thiếu
+     *   ② chốt giá từng người         - giá ghế × giảm giá, tính Ở SERVER
+     *   ③ 1 transaction               - khoá hold, thay danh sách cũ bằng danh sách mới
+     */
+    @Override
+    public HoldResult savePassengers(String holdCode, List<PassengerCommand> passengers) {
+        Optional<Hold> found = holdRepository.findByCode(holdCode);
+        if (found.isEmpty()) {
+            return HoldResult.fail(HoldResult.Status.HOLD_NOT_FOUND);
+        }
+        Hold hold = found.get();
+        LocalDateTime now = LocalDateTime.now();
+        if (!hold.isHolding(now)) {
+            return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
+        }
+
+        // ① So bằng TẬP HỢP mã ghế, không so số lượng: 2 người cho 2 ghế
+        // nhưng cả hai cùng ghi ghế C3-1 thì đếm vẫn khớp mà ghế C3-2 không
+        // có ai ngồi. Tập hợp thì trùng mã sẽ ra kích thước nhỏ hơn.
+        List<Seat> seats = seatRepository.findByHold(hold.getId());
+        Map<String, Seat> seatByCode = new HashMap<>();
+        for (Seat seat : seats) {
+            seatByCode.put(seat.getSeatCode(), seat);
+        }
+        Set<String> requested = new HashSet<>();
+        for (PassengerCommand p : passengers) {
+            requested.add(p.seatId());
+        }
+        if (requested.size() != passengers.size() || !requested.equals(seatByCode.keySet())) {
+            log.info("[HOLD] hanh khach khong khop ghe | holdCode={} ghe={} gui len={}",
+                    holdCode, seatByCode.keySet(), requested);
+            return HoldResult.fail(HoldResult.Status.PASSENGER_MISMATCH);
+        }
+
+        // ② Giá gốc lấy từ GHẾ THẬT trong DB, giảm giá lấy từ LUẬT ở domain.
+        // Client chỉ gửi "tôi là sinh viên", không gửi con số nào về tiền.
+        Optional<Journey> journey = journeyOf(hold);
+        if (journey.isEmpty()) {
+            return HoldResult.fail(HoldResult.Status.ERROR);
+        }
+        List<HoldPassenger> rows = new ArrayList<>(passengers.size());
+        for (PassengerCommand p : passengers) {
+            long basePrice = journeyPricingService.fareOf(journey.get(), seatByCode.get(p.seatId()));
+            rows.add(new HoldPassenger()
+                    .setHoldId(hold.getId())
+                    .setSeatCode(p.seatId())
+                    .setFullName(p.fullName())
+                    .setIdNumber(p.idNumber())
+                    .setPhone(p.phone())
+                    .setDiscount(p.discount().name())
+                    .setBasePrice(basePrice)
+                    .setFinalPrice(p.discount().apply(basePrice))
+                    .setCreatedAt(now));
+        }
+
+        try {
+            List<HoldPassenger> saved = holdTransactionService.replacePassengers(hold, rows);
+            if (saved == null) {
+                // Vừa hết hạn, hoặc vừa được đổi thành đơn, trong khe giữa ⓪ và ③.
+                return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
+            }
+            log.info("[HOLD] luu {} hanh khach | holdCode={}", saved.size(), holdCode);
+            return HoldResult.success(toDTO(hold, journey.get(), now));
+
+        } catch (Exception e) {
+            log.error("[HOLD] loi khi luu hanh khach, MySQL da rollback | holdCode={}", holdCode, e);
+            return HoldResult.fail(HoldResult.Status.ERROR);
+        }
     }
 
     @Override

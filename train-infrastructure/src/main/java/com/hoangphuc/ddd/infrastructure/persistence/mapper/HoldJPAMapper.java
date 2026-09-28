@@ -52,6 +52,19 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
     int markUsed(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
 
     /**
+     * Khoá dòng hold cho tới hết transaction, đồng thời xác nhận nó còn hạn.
+     *
+     * Không đổi trạng thái gì, chỉ chạm updatedAt — mục đích là cái KHOÁ DÒNG
+     * mà InnoDB đặt lên khi UPDATE. markUsed() cũng UPDATE đúng dòng này, nên
+     * "lưu hành khách" và "tạo đơn" chạy cùng lúc sẽ phải xếp hàng: đơn hàng
+     * không bao giờ đọc phải danh sách hành khách đang ghi dở.
+     */
+    @Modifying
+    @Query("UPDATE Hold h SET h.updatedAt = :now " +
+           "WHERE h.id = :holdId AND h.status = 0 AND h.expireAt > :now")
+    int lockIfHolding(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
+
+    /**
      * Quét theo lô, không lấy hết một lần. Giờ cao điểm có thể hàng nghìn
      * lượt hết hạn cùng lúc; ôm hết vào RAM rồi xử lý là một transaction dài,
      * khoá nhiều dòng, chặn cả người đang mua.

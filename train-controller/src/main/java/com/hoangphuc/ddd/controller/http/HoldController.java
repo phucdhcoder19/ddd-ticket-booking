@@ -3,8 +3,11 @@ package com.hoangphuc.ddd.controller.http;
 import com.hoangphuc.ddd.application.model.HoldCommand;
 import com.hoangphuc.ddd.application.model.HoldDTO;
 import com.hoangphuc.ddd.application.model.HoldResult;
+import com.hoangphuc.ddd.application.model.PassengerCommand;
 import com.hoangphuc.ddd.application.service.hold.HoldAppService;
 import com.hoangphuc.ddd.controller.dto.CreateHoldRequest;
+import com.hoangphuc.ddd.controller.dto.SavePassengersRequest;
+import com.hoangphuc.ddd.domain.model.enums.PassengerDiscount;
 import com.hoangphuc.ddd.controller.model.vo.ResultMessage;
 import com.hoangphuc.ddd.controller.model.vo.ResultUtil;
 import jakarta.validation.Valid;
@@ -21,6 +24,7 @@ import java.util.List;
  *
  *   POST   /holds           chọn chỗ -> giành ghế, bắt đầu đếm ngược
  *   GET    /holds/{code}    polling  -> còn bao nhiêu giây (theo giờ SERVER)
+ *   PUT    /holds/{code}/passengers   ghi tên người ngồi từng ghế, chốt giảm giá
  *   DELETE /holds/{code}    quay lại -> trả ghế ngay
  */
 @RestController
@@ -59,6 +63,20 @@ public class HoldController {
         return toResponse(holdAppService.getHold(holdCode));
     }
 
+    /**
+     * PUT chứ không POST: body là TOÀN BỘ danh sách hành khách, gửi lại bao
+     * nhiêu lần cũng ra cùng một trạng thái. Frontend tự thử lại khi mạng
+     * chậm, và khách bấm "Quay lại" sửa tên rồi gửi lần nữa là chuyện thường.
+     */
+    @PutMapping("/{holdCode}/passengers")
+    public ResultMessage<HoldDTO> savePassengers(@PathVariable("holdCode") String holdCode,
+                                                 @Valid @RequestBody SavePassengersRequest request) {
+        List<PassengerCommand> passengers = request.getPassengers().stream()
+                .map(this::toCommand)
+                .toList();
+        return toResponse(holdAppService.savePassengers(holdCode, passengers));
+    }
+
     @DeleteMapping("/{holdCode}")
     public ResultMessage<HoldDTO> release(@PathVariable("holdCode") String holdCode) {
         return toResponse(holdAppService.releaseHold(holdCode));
@@ -74,6 +92,27 @@ public class HoldController {
      */
     private List<String> distinct(List<String> seatIds) {
         return seatIds == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(seatIds));
+    }
+
+    /**
+     * Chuẩn hoá ở biên, để DB chỉ có MỘT dạng cho mỗi thứ: tra vé theo số
+     * điện thoại mà trong bảng lẫn "0912 345 678" với "+84912345678" thì
+     * câu WHERE phone = ? không bao giờ tìm đủ.
+     */
+    private PassengerCommand toCommand(SavePassengersRequest.PassengerRequest p) {
+        String phone = p.getPhone().replaceAll("[\\s.]", "");
+        if (phone.startsWith("+84")) {
+            phone = "0" + phone.substring(3);
+        }
+        PassengerDiscount discount = p.getDiscount() == null
+                ? PassengerDiscount.NONE
+                : PassengerDiscount.valueOf(p.getDiscount());
+        return new PassengerCommand(
+                p.getSeatId().trim(),
+                p.getFullName().trim().replaceAll("\\s+", " "),
+                p.getIdNumber().trim(),
+                phone,
+                discount);
     }
 
     /**
@@ -95,6 +134,7 @@ public class HoldController {
             case INVALID_ROUTE  -> ResultUtil.error(400, "Ga di hoac ga den khong hop le");
             case HOLD_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay luot giu cho");
             case HOLD_EXPIRED   -> ResultUtil.error(410, "Het gio giu cho, moi ban chon lai");
+            case PASSENGER_MISMATCH -> ResultUtil.error(400, "Moi cho dang giu can dung mot hanh khach");
             case ERROR          -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
         };
     }
