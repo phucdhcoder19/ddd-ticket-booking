@@ -7,8 +7,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Biên giới giữa domain và thế giới bên ngoài.
- * Entity đi vào, DTO đi ra — client không bao giờ nhìn thấy entity.
+ * The boundary between the domain and the outside world.
+ * Entity in, DTO out — the client never sees an entity.
  */
 public class TicketMapper {
 
@@ -26,11 +26,11 @@ public class TicketMapper {
         dto.setDescription(entity.getDescription());
         dto.setStockAvailable(entity.getStockAvailable());
 
-        // Luật giá nằm ở domain (TicketDetail.effectivePrice), mapper chỉ gọi lại
+        // The pricing rule lives in the domain (TicketDetail.effectivePrice); the mapper just calls it
         dto.setPrice(entity.effectivePrice());
 
-        // "Còn bán được không" = ĐÚNG luật mà placeOrder() dùng để chặn.
-        // Gọi lại domain thay vì chép điều kiện ra đây — một luật, một chỗ định nghĩa.
+        // "Can it still be bought" = EXACTLY the rule placeOrder() uses as its gate.
+        // Call the domain instead of copying the condition here — one rule, defined in one place.
         LocalDateTime now = LocalDateTime.now();
         dto.setAvailable(entity.isOpenedForSale(now)
                 && !entity.isSaleEnded(now)

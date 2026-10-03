@@ -5,7 +5,7 @@ import com.hoangphuc.ddd.application.model.StationDTO;
 
 import java.util.List;
 
-/** Dữ liệu tra cứu cho trang chủ: danh sách ga và đợt mở bán. */
+/** Lookup data for the home page: the station list and the sale window. */
 public interface StationAppService {
 
     List<StationDTO> listStations();

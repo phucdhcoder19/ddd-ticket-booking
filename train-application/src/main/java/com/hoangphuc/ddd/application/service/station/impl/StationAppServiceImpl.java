@@ -23,11 +23,11 @@ public class StationAppServiceImpl implements StationAppService {
     private final TicketDetailDomainService ticketDetailDomainService;
 
     /**
-     * Tên đợt mở bán là câu CHỮ hiển thị, không phải dữ liệu nghiệp vụ —
-     * đổi tên đợt không làm đổi hành vi bán vé. Nên để ở config, không thêm
-     * cột vào bảng.
+     * The sale label is display TEXT, not business data — renaming a sale does
+     * not change how tickets are sold. So it lives in config rather than in a
+     * new table column.
      */
-    @Value("${app.sale.label:Đợt mở bán vé Tết}")
+    @Value("${app.sale.label:Lunar New Year ticket sale}")
     private String saleLabel;
 
     @Override

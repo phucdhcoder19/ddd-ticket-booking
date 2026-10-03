@@ -13,25 +13,25 @@ public interface HoldRepository {
     Optional<Hold> findByCode(String holdCode);
 
     /**
-     * Giành quyền đóng lượt giữ chỗ.
+     * Claim the right to close a hold.
      *
-     * Trả về số dòng bị ảnh hưởng, KHÔNG phải boolean "thành công":
-     *   1 = mình là người đổi được trạng thái -> mình có quyền hoàn kho
-     *   0 = người khác đã xử lý trước -> rút lui, không đụng vào kho
+     * Returns the number of affected rows, NOT a boolean "success":
+     *   1 = we changed the status -> we are allowed to return the seats
+     *   0 = someone else got there first -> back off, do not touch the seats
      *
-     * Đây là cách chặn cả hai bẫy: job chạy trùng trên 2 server, và job
-     * cướp lượt giữ chỗ của người đang thanh toán.
+     * This blocks both traps: the job running twice on 2 servers, and the job
+     * stealing the hold of a customer who is in the middle of paying.
      */
     int markReleased(Long holdId, LocalDateTime now);
 
     int markUsed(Long holdId, LocalDateTime now);
 
     /**
-     * Khoá dòng hold tới hết transaction hiện tại, nếu nó còn đang giữ.
-     * 0 = đã hết hạn / đã dùng / đã huỷ -> không được sửa gì thêm.
+     * Lock the hold row until the current transaction ends, if it is still active.
+     * 0 = expired / used / cancelled -> nothing may be changed anymore.
      */
     int lockIfHolding(Long holdId, LocalDateTime now);
 
-    /** Các lượt giữ chỗ đã quá hạn mà chưa ai dọn. */
+    /** Holds that have expired but have not been cleaned up yet. */
     List<Hold> findExpired(LocalDateTime now, int limit);
 }

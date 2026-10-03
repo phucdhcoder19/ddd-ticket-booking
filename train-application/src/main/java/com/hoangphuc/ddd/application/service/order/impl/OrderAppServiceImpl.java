@@ -6,6 +6,7 @@ import com.hoangphuc.ddd.application.model.OrderResult;
 import com.hoangphuc.ddd.application.service.order.OrderAppService;
 import com.hoangphuc.ddd.application.service.pricing.Journey;
 import com.hoangphuc.ddd.application.service.pricing.JourneyPricingService;
+import com.hoangphuc.ddd.application.service.queue.QueueAppService;
 import com.hoangphuc.ddd.application.service.ticket.OrderTransactionService;
 import com.hoangphuc.ddd.application.service.ticket.PassengersMissingException;
 import com.hoangphuc.ddd.domain.model.entity.Hold;
@@ -36,19 +37,20 @@ public class OrderAppServiceImpl implements OrderAppService {
     private final TicketOrderRepository ticketOrderRepository;
     private final OrderTransactionService orderTransactionService;
     private final JourneyPricingService journeyPricingService;
+    private final QueueAppService queueAppService;
 
     /**
-     * Luồng ngắn hơn hẳn createHold(), vì phần khó đã làm xong ở bước giữ chỗ:
+     * Much shorter than createHold(), because the hard part was done when holding:
      *
-     *   KHÔNG kiểm giờ mở bán  — đã kiểm lúc tạo hold
-     *   KHÔNG giành ghế        — ghế đã thuộc về hold này rồi
-     *   KHÔNG tính lại tiền    — giá đã chốt trên từng hành khách
+     *   NO sale time check   — done when the hold was created
+     *   NO seat claiming     — the seats already belong to this hold
+     *   NO repricing         — prices are fixed on each passenger
      *
-     * Chỉ còn: giành quyền đổi trạng thái hold, kiểm đủ hành khách, rồi ghi
-     * đơn và sang tên ghế.
+     * What is left: win the right to change the hold's status, check that all
+     * passengers are there, then write the order and transfer the seats.
      */
     @Override
-    public OrderResult createFromHold(String holdCode) {
+    public OrderResult createFromHold(String holdCode, String queueToken) {
         log.info("[ORDER] createFromHold | holdCode={}", holdCode);
 
         Optional<Hold> found = holdRepository.findByCode(holdCode);
@@ -60,22 +62,35 @@ public class OrderAppServiceImpl implements OrderAppService {
         try {
             TicketOrder order = orderTransactionService.convertSeatHoldToOrder(hold);
             if (order == null) {
-                // Thua cuộc đua với job, hoặc hold đã dùng rồi.
-                // KHÔNG trả ghế ở đây — bên thắng đã lo, hoặc ghế vẫn đang
-                // thuộc về đơn hàng. Đụng vào là bán lại chỗ đã có chủ.
+                // Lost the race with the job, or the hold was already used.
+                // DO NOT return seats here — the winner took care of it, or the
+                // seats still belong to an order. Touching them resells seats
+                // that already have an owner.
                 return OrderResult.fail(OrderResult.Status.HOLD_EXPIRED);
+            }
+
+            // Done buying: leave "inside" and give the slot to someone waiting
+            // right away, instead of occupying it for the full 15 minutes. Done
+            // AFTER the transaction COMMITs: freeing the slot first and then
+            // failing the order would cost the customer both the slot and the
+            // ticket. And a Redis error here must not break an order that
+            // already succeeded — at worst the admission expires after 15 minutes.
+            try {
+                queueAppService.leave(queueToken);
+            } catch (Exception e) {
+                log.warn("[ORDER] could not free the waiting room slot | token={}", queueToken, e);
             }
             return OrderResult.success(toDTO(order));
 
         } catch (PassengersMissingException e) {
-            // Đã rollback: hold về lại status 0, ghế vẫn giữ nguyên cho khách.
-            log.info("[ORDER] chua du hanh khach | {}", e.getMessage());
+            // Rolled back: the hold is back to status 0, the seats stay with the customer.
+            log.info("[ORDER] passengers missing | {}", e.getMessage());
             return OrderResult.fail(OrderResult.Status.PASSENGERS_MISSING);
 
         } catch (Exception e) {
-            // Transaction đã ROLLBACK: hold về status 0, không có đơn, ghế
-            // vẫn đang được giữ. Khách còn thời gian bấm lại.
-            log.error("[ORDER] loi khi tao don | holdCode={}", holdCode, e);
+            // The transaction has ROLLED BACK: hold back to status 0, no order,
+            // seats still held. The customer still has time to try again.
+            log.error("[ORDER] error creating order | holdCode={}", holdCode, e);
             return OrderResult.fail(OrderResult.Status.ERROR);
         }
     }
@@ -91,10 +106,10 @@ public class OrderAppServiceImpl implements OrderAppService {
 
     private OrderDTO toDTO(TicketOrder order) {
         OrderDTO dto = new OrderDTO();
-        // orderId và code cùng là mã đơn: client cần một thứ để tra cứu và
-        // một thứ để in cho khách đọc, và ở đây chúng là một. Tách sẵn hai
-        // trường để sau này đổi mã in (VT2702061234) mà không phải sửa
-        // đường dẫn tra cứu.
+        // orderId and code are both the order number: the client needs one
+        // value to look the order up and one to print for the customer, and
+        // here they are the same. They are separate fields so the printed code
+        // (VT2702061234) can change later without touching the lookup URL.
         dto.setOrderId(order.getOrderNumber());
         dto.setCode(order.getOrderNumber());
         dto.setStatus(statusLabel(order.getOrderStatus()));
@@ -111,10 +126,10 @@ public class OrderAppServiceImpl implements OrderAppService {
     }
 
     /**
-     * Những chỗ của đơn, đọc ngược từ bảng seat qua cột order_id.
+     * The order's seats, read back from the seat table via order_id.
      *
-     * Đơn mua thẳng (luồng bài 19/21) không có ghế nào trỏ về, nên trả danh
-     * sách rỗng — đúng, không phải thiếu sót.
+     * Buy-by-quantity orders (lessons 19/21) have no seats pointing at them,
+     * so the list is empty — correct, not an omission.
      */
     private List<HoldItemDTO> itemsOf(TicketOrder order) {
         List<Seat> seats = seatRepository.findByOrder(order.getId());

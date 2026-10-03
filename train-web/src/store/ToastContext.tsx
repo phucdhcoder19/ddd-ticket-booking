@@ -14,7 +14,7 @@ const TONE_STYLE: Record<ToastTone, string> = {
   info: "border-info-600/25 bg-info-50 text-ink-900",
   success: "border-ok-600/25 bg-ok-50 text-ink-900",
   warning: "border-warn-600/30 bg-warn-50 text-ink-900",
-  error: "border-son-600/25 bg-son-50 text-ink-900",
+  error: "border-brand-600/25 bg-brand-50 text-ink-900",
 };
 
 const TONE_ICON: Record<ToastTone, string> = {
@@ -48,15 +48,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={api}>
       {children}
       {/*
-        aria-live="polite" để trình đọc màn hình đọc thông báo mà không cắt
-        ngang thao tác đang làm. Đặt trên cùng để không che nút thao tác chính
-        nằm dưới đáy màn hình điện thoại.
+        aria-live="polite" so screen readers announce messages without
+        interrupting what the user is doing. Placed at the top so it never
+        covers the main action button at the bottom of a phone screen.
       */}
       <div
         className="pointer-events-none fixed inset-x-0 top-2 z-50 flex flex-col items-center gap-2 px-3"
         role="region"
         aria-live="polite"
-        aria-label="Thông báo"
+        aria-label="Notifications"
       >
         {toasts.map((t) => (
           <div
@@ -74,7 +74,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 onClick={() => dismiss(t.id)}
-                aria-label="Đóng thông báo"
+                aria-label="Close notification"
                 className="-m-2 grid size-9 shrink-0 place-items-center rounded-full text-ink-500 hover:bg-white/60 hover:text-ink-900"
               >
                 ✕
@@ -90,6 +90,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useToast() {
   const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useToast phải nằm trong ToastProvider");
+  if (!ctx) throw new Error("useToast must be used inside ToastProvider");
   return ctx;
 }

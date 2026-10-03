@@ -16,14 +16,14 @@ public interface RedisInfrasService {
 
     void setInt(String key, int value);
 
-    /** @return -1 nếu key không tồn tại */
+    /** @return -1 if the key does not exist */
     int getInt(String key);
 
     void delete(String key);
 
     /**
-     * Chạy 1 script Lua trên Redis — toàn bộ script là MỘT thao tác nguyên tử.
-     * Đây là cách duy nhất để check-rồi-set mà không bị thread khác chen vào.
+     * Run a Lua script on Redis — the whole script is ONE atomic operation.
+     * It is the only way to check-then-set without another thread cutting in.
      */
     Long executeScript(RedisScript<Long> script, List<String> keys, Object... args);
 

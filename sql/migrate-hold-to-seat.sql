@@ -1,23 +1,23 @@
 -- ─────────────────────────────────────────────────────────────────────────
--- CHUYỂN GIỮ CHỖ TỪ "ĐẾM SỐ LƯỢNG" SANG "THEO TỪNG GHẾ"
+-- MOVE HOLDS FROM "COUNT BY QUANTITY" TO "PER SEAT"
 --
 --   docker exec -i pre-event-mysql mysql -uroot -proot1234 train_ticket < sql/migrate-hold-to-seat.sql
 --
--- Chỉ cần chạy trên CSDL ĐÃ CÓ TỪ TRƯỚC. Máy mới tinh thì bỏ qua file này:
--- ddl-auto: update sẽ tự tạo đúng cấu trúc mới.
+-- Only needed on a database that ALREADY EXISTED. Skip this file on a fresh
+-- machine: ddl-auto: update creates the new structure correctly by itself.
 --
--- Vì sao phải chạy tay: ddl-auto: update chỉ biết THÊM cột, không bao giờ
--- xoá cột cũ hay nới ràng buộc. Bảng ticket_hold cũ có ticket_id NOT NULL,
--- mà bản mới không còn ghi cột đó nữa -> mọi lượt giữ chỗ sẽ chết ngay ở
--- câu INSERT với lỗi "Field 'ticket_id' doesn't have a default value".
+-- Why it must be run by hand: ddl-auto: update only knows how to ADD columns;
+-- it never drops old columns or relaxes constraints. The old ticket_hold table
+-- has ticket_id NOT NULL, which the new version no longer writes -> every hold
+-- would fail on INSERT with "Field 'ticket_id' doesn't have a default value".
 -- ─────────────────────────────────────────────────────────────────────────
 
--- Xoá luôn cả bảng thay vì ALTER từng cột: giữ chỗ là dữ liệu SỐNG 10 PHÚT.
--- Không có gì trong đó đáng giữ lại, và những lượt giữ cũ thì trỏ vào mô
--- hình kho cũ nên cũng không còn ý nghĩa.
+-- Drop the whole table instead of ALTERing column by column: holds are data
+-- that LIVES 10 MINUTES. Nothing in there is worth keeping, and old holds point
+-- at the old stock model, so they are meaningless anyway.
 DROP TABLE IF EXISTS ticket_hold;
 
--- Đơn hàng thì KHÔNG được xoá — đó là chứng từ thu tiền.
--- Chỉ nới ticket_id thành NULL để đơn đặt theo ghế ghi được.
--- (Bỏ qua lỗi nếu bảng chưa tồn tại: máy mới chưa chạy app lần nào.)
+-- Orders must NOT be deleted — they are payment records.
+-- Only relax ticket_id to NULL so per-seat orders can be written.
+-- (Ignore the error if the table does not exist: a fresh machine that never ran the app.)
 ALTER TABLE ticket_order MODIFY ticket_id BIGINT NULL;

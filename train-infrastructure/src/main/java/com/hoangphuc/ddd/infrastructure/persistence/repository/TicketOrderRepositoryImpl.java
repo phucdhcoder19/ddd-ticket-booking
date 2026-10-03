@@ -14,8 +14,8 @@ public class TicketOrderRepositoryImpl implements TicketOrderRepository {
 
     @Override
     public TicketOrder save(TicketOrder order) {
-        // KHÔNG đặt @Transactional ở đây: save() của Spring Data tự tham gia
-        // transaction đang mở ở tầng trên (OrderTransactionService).
+        // NO @Transactional here: Spring Data's save() joins the transaction
+        // already opened by the layer above (OrderTransactionService).
         return ticketOrderJPAMapper.save(order);
     }
 

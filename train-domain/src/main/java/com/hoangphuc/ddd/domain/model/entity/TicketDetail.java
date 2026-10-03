@@ -24,8 +24,8 @@ public class TicketDetail {
     private String name;
     private String description;
 
-    private int stockInitial;       // tổng vé mở bán
-    private int stockAvailable;     // vé còn lại  ← thứ cả bài học xoay quanh
+    private int stockInitial;       // total tickets put on sale
+    private int stockAvailable;     // tickets left  ← what the whole lesson revolves around
 
     private BigDecimal priceOriginal;
     private BigDecimal priceFlash;
@@ -40,8 +40,8 @@ public class TicketDetail {
     private LocalDateTime updatedAt;
 
     /**
-     * LUẬT NGHIỆP VỤ: giá bán thực tế = giá flash nếu có, không thì giá gốc.
-     * Tên không có tiền tố "get" để Jackson KHÔNG coi là field khi cache vào Redis.
+     * BUSINESS RULE: actual selling price = flash price if set, otherwise the original price.
+     * No "get" prefix so Jackson does NOT treat it as a field when caching in Redis.
      */
     public BigDecimal effectivePrice() {
         if (priceFlash != null && priceFlash.compareTo(BigDecimal.ZERO) > 0) {
@@ -51,13 +51,13 @@ public class TicketDetail {
     }
 
     /**
-     * LUẬT NGHIỆP VỤ: vé đã được mở bán chưa.
-     * Phải ACTIVE và đã tới giờ mở. saleStartTime null = mở bán ngay.
+     * BUSINESS RULE: is the ticket on sale yet?
+     * It must be ACTIVE and past the opening time. saleStartTime null = on sale immediately.
      *
-     * Nhận "now" làm tham số, không tự gọi LocalDateTime.now() bên trong:
-     *   1. Test truyền được mốc thời gian bất kỳ
-     *   2. Hàm CÓ tham số thì Jackson không coi là field khi cache vào Redis
-     *      (cùng lý do đặt tên effectivePrice() thay vì getEffectivePrice())
+     * Takes "now" as a parameter instead of calling LocalDateTime.now() inside:
+     *   1. Tests can pass any instant
+     *   2. A method WITH parameters is not treated as a field by Jackson when
+     *      caching in Redis (same reason effectivePrice() is not getEffectivePrice())
      */
     public boolean isOpenedForSale(LocalDateTime now) {
         if (status != STATUS_ACTIVE) {
@@ -66,7 +66,7 @@ public class TicketDetail {
         return saleStartTime == null || !now.isBefore(saleStartTime);
     }
 
-    /** LUẬT NGHIỆP VỤ: đã qua giờ đóng bán chưa. saleEndTime null = bán vô hạn. */
+    /** BUSINESS RULE: has the sale closed? saleEndTime null = never closes. */
     public boolean isSaleEnded(LocalDateTime now) {
         return saleEndTime != null && now.isAfter(saleEndTime);
     }

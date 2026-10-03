@@ -8,12 +8,12 @@ import java.util.Optional;
 public interface SeatMapAppService {
 
     /**
-     * So do cho cua mot chuyen, chi lay cac toa thuoc hang cho khach da chon.
+     * Seat map of a trip, only the carriages of the seat class the customer picked.
      *
-     * Phai co ca ga di va ga den: gia tung cho phu thuoc quang duong khach
-     * di, ma chuyen tau thi khong biet khach xuong ga nao.
+     * Both stations are required: each seat's price depends on how far the
+     * passenger travels, and the trip itself does not know where they get off.
      *
-     * @return rong neu khong co chuyen do, hoac ma ga khong hop le
+     * @return empty if there is no such trip, or a station code is invalid
      */
     Optional<List<CarriageDTO>> carriages(Long tripId, String seatClass, String fromCode, String toCode);
 }

@@ -7,6 +7,6 @@ import java.util.List;
 
 public interface TripAppService {
 
-    /** Tim chuyen tau. Chuyen nao chua ton tai cho ngay do thi sinh luon. */
+    /** Search trips. Any trip that does not exist yet for that date is provisioned on the spot. */
     List<TripDTO> search(String fromCode, String toCode, LocalDate date);
 }

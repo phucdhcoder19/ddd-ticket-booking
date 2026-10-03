@@ -6,15 +6,15 @@ export type AsyncState<T> = {
   data: T | undefined;
   loading: boolean;
   error: unknown;
-  /** Đang tự động thử lại sau 429/timeout — dùng để hiện dải băng "đang thử lại" */
+  /** Retrying automatically after a 429/timeout — used to show the "retrying" banner */
   retrying: RetryNotice | null;
-  /** Lần tải đầu tiên (hiện skeleton) khác với lần làm mới nền (giữ nguyên dữ liệu cũ) */
+  /** The first load (shows a skeleton) differs from a background refresh (keeps old data) */
   isInitialLoad: boolean;
 };
 
 /**
- * Bọc một lời gọi API thành 4 trạng thái mà mọi màn hình đều cần:
- * loading → (empty | error | success). Tự huỷ request khi rời màn hình.
+ * Wraps an API call into the 4 states every screen needs:
+ * loading → (empty | error | success). Cancels the request when leaving the screen.
  */
 export function useAsync<T>(
   fn: (opts: CallOptions) => Promise<T>,
@@ -30,7 +30,7 @@ export function useAsync<T>(
     isInitialLoad: true,
   });
   const fnRef = useRef(fn);
-  // Luôn dùng phiên bản mới nhất của hàm gọi API mà không phải chạy lại effect
+  // Always use the latest version of the API function without re-running the effect
   useEffect(() => {
     fnRef.current = fn;
   });

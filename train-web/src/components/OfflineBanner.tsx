@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
 /**
- * Dải băng báo mất mạng.
+ * Offline banner.
  *
- * Với người dùng mạng chậm, phân biệt được "mất mạng" và "hệ thống quá tải" là
- * rất quan trọng: một bên cần bật lại 4G, một bên chỉ cần chờ. Dải này chỉ nói
- * về tình trạng máy của họ, và trấn an rằng chỗ đang giữ không bị mất.
+ * For users on slow networks, telling "no connection" apart from "system
+ * overloaded" matters a lot: one needs 4G turned back on, the other only needs
+ * waiting. This banner only talks about their device, and reassures them that
+ * the seats they hold are not lost.
  */
 export function OfflineBanner() {
   const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
@@ -29,7 +30,7 @@ export function OfflineBanner() {
       className="sticky top-0 z-40 bg-ink-900 px-4 py-2.5 text-center text-sm font-semibold text-white"
     >
       <span aria-hidden>📵 </span>
-      Mất kết nối mạng. Chỗ bạn đang giữ vẫn được giữ nguyên trên hệ thống — bật lại mạng rồi thao tác tiếp nhé.
+      You are offline. The seats you hold are still kept on our system — reconnect and carry on.
     </div>
   );
 }

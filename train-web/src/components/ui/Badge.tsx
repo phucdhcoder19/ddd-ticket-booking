@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-type Tone = "neutral" | "son" | "mai" | "ok" | "warn" | "info" | "muted";
+type Tone = "neutral" | "brand" | "accent" | "ok" | "warn" | "info" | "muted";
 
 const TONES: Record<Tone, string> = {
   neutral: "bg-ink-100 text-ink-800 border-ink-200",
-  son: "bg-son-50 text-son-700 border-son-200",
-  mai: "bg-mai-50 text-mai-700 border-mai-200",
+  brand: "bg-brand-50 text-brand-700 border-brand-200",
+  accent: "bg-accent-50 text-accent-700 border-accent-200",
   ok: "bg-ok-50 text-ok-600 border-ok-600/20",
   warn: "bg-warn-50 text-warn-600 border-warn-600/25",
   info: "bg-info-50 text-info-600 border-info-600/20",
@@ -31,19 +31,19 @@ export function Badge({
 }
 
 /**
- * Badge số chỗ còn lại.
- * Ngưỡng cảnh báo tính theo số tuyệt đối chứ không theo phần trăm: với hành
- * khách, "còn 3 chỗ" mới là thông tin quyết định, chứ không phải "còn 2%".
+ * Badge for the number of seats left.
+ * The warning thresholds are absolute numbers, not percentages: for a
+ * traveller, "3 seats left" is what matters, not "2% left".
  */
 export function AvailabilityBadge({ available, className }: { available: number; className?: string }) {
   if (available <= 0) {
-    return <Badge tone="muted" className={className} icon="✕">Hết vé</Badge>;
+    return <Badge tone="muted" className={className} icon="✕">Sold out</Badge>;
   }
   if (available <= 10) {
-    return <Badge tone="son" className={className} icon="🔥">Sắp hết · còn {available} chỗ</Badge>;
+    return <Badge tone="brand" className={className} icon="🔥">Almost gone · {available} left</Badge>;
   }
   if (available <= 30) {
-    return <Badge tone="warn" className={className}>Còn {available} chỗ</Badge>;
+    return <Badge tone="warn" className={className}>{available} seats left</Badge>;
   }
-  return <Badge tone="ok" className={className}>Còn {available} chỗ</Badge>;
+  return <Badge tone="ok" className={className}>{available} seats left</Badge>;
 }

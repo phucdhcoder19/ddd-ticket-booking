@@ -1,9 +1,9 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 /**
- * Hộp thoại dùng thẻ <dialog> gốc của trình duyệt: đã sẵn có bẫy tiêu điểm
- * (focus trap), đóng bằng phím Esc và lớp phủ ::backdrop — không cần thư viện.
- * Trên điện thoại, hộp thoại trượt lên từ đáy để ngón cái với tới nút được.
+ * A dialog built on the browser's native <dialog>: it already has a focus
+ * trap, closing with Esc and a ::backdrop overlay — no library needed.
+ * On phones, the dialog slides up from the bottom so the thumb can reach the buttons.
  */
 export function Modal({
   open, onClose, title, description, children, footer, dismissible = true,
@@ -14,7 +14,7 @@ export function Modal({
   description?: string;
   children?: ReactNode;
   footer?: ReactNode;
-  /** false khi người dùng buộc phải chọn một hành động (ví dụ hết giờ giữ chỗ) */
+  /** false when the user must pick an action (e.g. the hold has expired) */
   dismissible?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -30,7 +30,7 @@ export function Modal({
     const dialog = ref.current;
     if (!dialog) return;
     const onCancel = (e: Event) => {
-      // Chặn Esc khi hộp thoại bắt buộc phải trả lời
+      // Block Esc when the dialog requires an answer
       if (!dismissible) e.preventDefault();
       else onClose();
     };
@@ -46,7 +46,7 @@ export function Modal({
       className="m-0 w-full max-w-lg rounded-t-3xl border-0 bg-white p-0 shadow-[var(--shadow-lift)] backdrop:bg-ink-900/45 sm:m-auto sm:rounded-3xl"
       style={{ marginTop: "auto", marginBottom: 0 }}
       onClick={(e) => {
-        // Bấm ra ngoài vùng nội dung thì đóng
+        // Clicking outside the content closes it
         if (dismissible && e.target === ref.current) onClose();
       }}
     >

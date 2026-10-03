@@ -8,29 +8,34 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 
 /**
- * GIỮ CHỖ CÓ HẠN — trái tim của bài 18.
+ * TIME-LIMITED SEAT HOLD — the core of lesson 18.
  *
- * Hold là "chỗ này đang có người xem, đừng bán cho ai khác": tạm thời, có
- * hạn, hết giờ thì biến mất. Khác hẳn TicketOrder — đơn hàng là chứng từ thu
- * tiền, tồn tại vĩnh viễn, không bao giờ được tự xoá.
+ * A hold means "someone is looking at these seats, do not sell them to anyone
+ * else": temporary, with a deadline, gone once time runs out. Very different
+ * from TicketOrder — an order is a payment record that lives forever and is
+ * never deleted automatically.
  *
- * Tách hai thứ ra vì vòng đời khác nhau. Nhét chung một bảng thì bạn có một
- * đống dòng PENDING vừa là "đang xem" vừa là "đã mua chưa trả tiền" — không
- * phân biệt được, và báo cáo doanh thu phải lọc rác.
+ * They are separate because their lifecycles differ. Put both in one table
+ * and you get a pile of PENDING rows that mean both "browsing" and "bought
+ * but not paid" — impossible to tell apart, and revenue reports have to
+ * filter out the noise.
  *
  * ──────────────────────────────────────────────────────────────────────────
- * GIỮ TỪNG GHẾ, KHÔNG GIỮ "N CHỖ BẤT KỲ"
+ * HOLD SPECIFIC SEATS, NOT "ANY N SEATS"
  *
- * Bản đầu của bảng này giữ theo số lượng: ticketId + quantity, kho là một
- * con số. Mô hình đó đúng với vé hội chợ, sai với vé tàu — khách chọn đúng
- * giường tầng 1 khoang 3 toa 11, không chọn "một chỗ nằm nào đó".
+ * The first version of this table held by quantity: ticketId + quantity, with
+ * stock as a single number. That model fits event tickets, not train tickets —
+ * a passenger picks the exact lower berth in compartment 3 of carriage 11,
+ * not "some berth".
  *
- * Nên Hold KHÔNG còn cột quantity. Danh sách ghế nằm ở phía bảng seat
- * (seat.hold_id trỏ về đây), vì ghế mới là thứ có trạng thái cần khoá.
- * Muốn biết lượt này giữ những chỗ nào: SELECT * FROM seat WHERE hold_id = ?
+ * So Hold has NO quantity column anymore. The seat list lives on the seat
+ * table (seat.hold_id points here), because the seat is the thing whose state
+ * must be locked. To see which seats a hold owns:
+ * SELECT * FROM seat WHERE hold_id = ?
  *
- * seatCount và totalAmount là số CHỐT LẠI lúc giữ, giữ ở đây để không phải
- * đếm và tính giá lại mỗi lần client hỏi đồng hồ đếm ngược (mỗi 5 giây).
+ * seatCount and totalAmount are FIXED at hold time and kept here so we do not
+ * have to recount and reprice every time the client polls the countdown
+ * (every 5 seconds).
  */
 @Data
 @Accessors(chain = true)
@@ -39,24 +44,24 @@ import java.time.LocalDateTime;
     name = "ticket_hold",
     indexes = {
         @Index(name = "uk_hold_code", columnList = "holdCode", unique = true),
-        // Job quét đơn hết hạn chạy câu WHERE status = 0 AND expire_at < now.
-        // Index ghép đúng thứ tự đó: lọc bằng cột đầu, so sánh khoảng bằng cột sau.
+        // The expiry job runs WHERE status = 0 AND expire_at < now.
+        // Composite index in that order: filter on the first column, range on the second.
         @Index(name = "idx_hold_status_expire", columnList = "status,expireAt")
     }
 )
 public class Hold {
 
-    public static final int STATUS_HOLDING  = 0;   // đang giữ, chưa quá hạn
-    public static final int STATUS_USED     = 1;   // đã đổi thành đơn hàng
-    public static final int STATUS_RELEASED = 2;   // đã trả kho (user huỷ hoặc hết giờ)
+    public static final int STATUS_HOLDING  = 0;   // active, not expired yet
+    public static final int STATUS_USED     = 1;   // converted into an order
+    public static final int STATUS_RELEASED = 2;   // seats returned (user cancelled or time ran out)
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /**
-     * Mã công khai trả cho client. Không lộ id tự tăng ra ngoài — biết id=41
-     * là đoán được id=42 của người khác.
+     * Public code returned to the client. The auto-increment id is never
+     * exposed — knowing id=41 lets you guess someone else's id=42.
      */
     @Column(nullable = false, unique = true, length = 40)
     private String holdCode;
@@ -64,16 +69,16 @@ public class Hold {
     @Column(nullable = false)
     private Long userId;
 
-    /** Chuyến đang giữ chỗ. Ghế chỉ có nghĩa trong phạm vi một chuyến. */
+    /** The trip being held. A seat only has meaning within one trip. */
     @Column(nullable = false)
     private Long tripId;
 
     /**
-     * HÀNH TRÌNH của khách, không phải của đoàn tàu.
+     * The PASSENGER's journey, not the train's.
      *
-     * SE1 chạy Hà Nội – Sài Gòn nhưng khách có thể chỉ đi Huế – Đà Nẵng, và
-     * giá vé tính theo đúng quãng đó. Không lưu cặp ga vào hold thì tới bước
-     * tạo đơn không còn cách nào tính lại đúng số tiền.
+     * SE1 runs Hanoi – Saigon, but a passenger may only ride Hue – Da Nang, and
+     * the fare is based on that segment. Without the station pair on the hold
+     * there is no way to recompute the right amount when the order is created.
      */
     @Column(nullable = false, length = 8)
     private String fromCode;
@@ -81,16 +86,16 @@ public class Hold {
     @Column(nullable = false, length = 8)
     private String toCode;
 
-    /** Số ghế đang giữ — chốt lúc giữ, để khỏi COUNT lại mỗi lần polling. */
+    /** Number of seats held — fixed at hold time so polling does not need a COUNT. */
     private int seatCount;
 
-    /** Tổng tiền tạm tính, chưa trừ giảm giá của từng hành khách. */
+    /** Provisional total, before each passenger's discount. */
     private long totalAmount;
 
     @Column(nullable = false)
     private int status;
 
-    /** Thời điểm hết hạn giữ chỗ. Đây là NGUỒN SỰ THẬT, client chỉ đếm ngược theo. */
+    /** When the hold expires. This is the SOURCE OF TRUTH; the client only counts down to it. */
     @Column(nullable = false)
     private LocalDateTime expireAt;
 
@@ -98,15 +103,15 @@ public class Hold {
     private LocalDateTime updatedAt;
 
     /**
-     * LUẬT NGHIỆP VỤ: còn giữ được không.
-     * Nhận "now" làm tham số — cùng lý do với TicketDetail.isOpenedForSale():
-     * test truyền được mốc bất kỳ, và Jackson không coi là field khi serialize.
+     * BUSINESS RULE: is the hold still active?
+     * Takes "now" as a parameter — same reason as TicketDetail.isOpenedForSale():
+     * tests can pass any instant, and Jackson does not treat it as a field.
      */
     public boolean isHolding(LocalDateTime now) {
         return status == STATUS_HOLDING && now.isBefore(expireAt);
     }
 
-    /** Số giây còn lại, không bao giờ âm — client dùng để vẽ đồng hồ. */
+    /** Seconds left, never negative — the client uses it to draw the timer. */
     public long secondsLeft(LocalDateTime now) {
         if (status != STATUS_HOLDING) return 0;
         long s = Duration.between(now, expireAt).toSeconds();

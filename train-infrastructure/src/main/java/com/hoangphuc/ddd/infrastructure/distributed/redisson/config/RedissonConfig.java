@@ -8,10 +8,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Redisson dùng CÙNG một Redis với RedisTemplate, nhưng là thư viện khác:
- *   - Lettuce (RedisTemplate) : GET / SET / DEL / Lua  -> việc cơ bản
- *   - Redisson               : khoá phân tán, semaphore, hàng đợi
- * Hai thư viện chạy song song, không xung đột.
+ * Redisson uses the SAME Redis as RedisTemplate, but it is a different library:
+ *   - Lettuce (RedisTemplate) : GET / SET / DEL / Lua  -> the basics
+ *   - Redisson               : distributed locks, semaphores, queues
+ * The two libraries run side by side without conflict.
  */
 @Configuration
 public class RedissonConfig {
@@ -22,7 +22,7 @@ public class RedissonConfig {
     @Value("${spring.data.redis.port}")
     private int port;
 
-    /** destroyMethod = "shutdown": đóng kết nối khi app tắt, tránh treo tiến trình. */
+    /** destroyMethod = "shutdown": close connections when the app stops, so the process does not hang. */
     @Bean(destroyMethod = "shutdown")
     public RedissonClient redissonClient() {
         Config config = new Config();

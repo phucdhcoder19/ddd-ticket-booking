@@ -15,27 +15,27 @@ public interface TicketDetailJPAMapper extends JpaRepository<TicketDetail, Long>
     Integer getStockAvailable(@Param("ticketId") Long ticketId);
 
     /**
-     * Ve ACTIVE gan nhat CHUA toi gio mo ban -> dot sap mo.
-     * Ten ham dai nhung Spring Data tu sinh ca cau SQL lan thu tu sap xep,
-     * khong phai viet @Query.
+     * The nearest ACTIVE ticket whose sale has NOT opened yet -> the upcoming sale.
+     * The method name is long, but Spring Data generates the whole query,
+     * including the sort order, without a @Query.
      */
     Optional<TicketDetail> findFirstByStatusAndSaleStartTimeAfterOrderBySaleStartTimeAsc(
             int status, LocalDateTime now);
 
-    /** Ve ACTIVE da toi gio mo gan day nhat -> dot dang chay (co the da het gio). */
+    /** The ACTIVE ticket that opened most recently -> the running sale (may have ended). */
     Optional<TicketDetail> findFirstByStatusAndSaleStartTimeLessThanEqualOrderBySaleStartTimeDesc(
             int status, LocalDateTime now);
 
     /**
-     * TUYẾN PHÒNG THỦ 1 — CÁCH 1 trong 3 cách trừ kho MySQL (bài DDD 19).
+     * FIRST LINE OF DEFENCE — OPTION 1 of the 3 ways to deduct MySQL stock (DDD lesson 19).
      *
-     * Điều kiện "AND t.stockAvailable >= :quantity" là thứ duy nhất
-     * đảm bảo không oversell ở tầng DB:
-     *   - InnoDB khoá dòng khi UPDATE -> các UPDATE cùng dòng phải xếp hàng
-     *   - Người xếp sau kiểm tra điều kiện trên giá trị MỚI NHẤT
-     *   - 1 câu SQL, không cần SELECT trước, không cần retry
+     * The condition "AND t.stockAvailable >= :quantity" is the only thing that
+     * prevents overselling at the DB level:
+     *   - InnoDB locks the row on UPDATE -> UPDATEs on the same row must queue
+     *   - Whoever comes later checks the condition against the LATEST value
+     *   - 1 SQL statement, no SELECT first, no retry
      *
-     * Trả về số row bị ảnh hưởng: 1 = trừ được, 0 = hết vé.
+     * Returns the number of affected rows: 1 = deducted, 0 = sold out.
      */
     @Modifying
     @Query("UPDATE TicketDetail t SET t.stockAvailable = t.stockAvailable - :quantity, " +

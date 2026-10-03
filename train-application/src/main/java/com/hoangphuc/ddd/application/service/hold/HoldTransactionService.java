@@ -18,13 +18,15 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Hai transaction của vòng đời giữ chỗ. Tách khỏi HoldAppService vì hai lý do
- * đã ghi ở OrderTransactionService, và chúng vẫn đúng ở đây:
+ * The transactions of the hold lifecycle. Kept apart from HoldAppService for
+ * the two reasons written down in OrderTransactionService, which still apply:
  *
- *   1. @Transactional chỉ ăn khi được gọi TỪ NGOÀI class (qua proxy Spring).
- *      Gọi this.releaseOne(...) trong cùng class là mất transaction, lặng lẽ.
- *   2. Method trong transaction KHÔNG được try/catch nuốt exception — nuốt
- *      thì Spring tưởng mọi thứ ổn và COMMIT. Bắt lỗi là việc của tầng gọi.
+ *   1. @Transactional only works when called FROM OUTSIDE the class (through
+ *      the Spring proxy). Calling this.releaseOne(...) inside the same class
+ *      silently loses the transaction.
+ *   2. A transactional method must NOT swallow exceptions with try/catch — if
+ *      it does, Spring thinks everything is fine and COMMITs. Catching errors
+ *      is the caller's job.
  */
 @Service
 @Slf4j
@@ -37,23 +39,23 @@ public class HoldTransactionService {
     private final JourneyPricingService journeyPricingService;
 
     /**
-     * GHI LƯỢT GIỮ + GIÀNH GHẾ trong cùng 1 transaction.
+     * WRITE THE HOLD + CLAIM SEATS in one transaction.
      *
-     * Thứ tự bắt buộc là ghi hold TRƯỚC: câu UPDATE ghế cần có holdId để ghi
-     * vào cột seat.hold_id, mà holdId chỉ có sau khi INSERT xong.
+     * The hold must be written FIRST: the seat UPDATE needs the holdId to put
+     * into seat.hold_id, and the holdId only exists after the INSERT.
      *
-     * Ba bước, và bước 2 là chỗ quyết định:
+     * Three steps, and step 2 is the one that decides:
      *
-     *   ① INSERT hold — mới chỉ là một tờ giấy, chưa chiếm chỗ của ai
-     *   ② UPDATE ... WHERE status = 0 — giành ghế, trả về số ghế giành được
-     *   ③ thiếu dù chỉ một ghế -> NÉM LỖI -> rollback cả ① lẫn ②
+     *   ① INSERT hold — just a piece of paper, nobody's seat is taken yet
+     *   ② UPDATE ... WHERE status = 0 — claim seats, returns how many were claimed
+     *   ③ missing even one seat -> THROW -> roll back both ① and ②
      *
-     * Vì sao thiếu một ghế là hỏng cả lượt: khách đi ba người chọn ba giường
-     * cùng khoang. Giữ cho họ hai giường rồi báo "còn thiếu một" là thứ không
-     * ai muốn mua, mà ba giường đó vẫn bị khoá 10 phút không bán được cho ai.
-     * Hoặc đủ, hoặc trả lại hết.
+     * Why one missing seat ruins the whole hold: a group of three picks three
+     * berths in the same compartment. Holding two of them and saying "one is
+     * missing" is something nobody wants to buy, yet those berths would stay
+     * locked for 10 minutes and unsellable to anyone. All or nothing.
      *
-     * @throws SeatUnavailableException khi có người nhanh tay hơn
+     * @throws SeatUnavailableException when someone else was faster
      */
     @Transactional(rollbackFor = Exception.class)
     public Hold createSeatHold(HoldCommand command, Journey journey,
@@ -76,12 +78,12 @@ public class HoldTransactionService {
         int claimed = seatRepository.claimForHold(command.tripId(), command.seatIds(), hold.getId());
         if (claimed != command.seatIds().size()) {
             throw new SeatUnavailableException(
-                    "Xin " + command.seatIds().size() + " cho, chi gianh duoc " + claimed);
+                    "Requested " + command.seatIds().size() + " seats, claimed only " + claimed);
         }
 
-        // Tổng tiền tính TỪ GHẾ THẬT vừa giành được, không cộng từ danh sách
-        // client gửi lên: chỉ ghế trong DB mới biết mình ở tầng mấy, mà tầng
-        // giường là một thừa số của giá.
+        // The total is computed FROM THE REAL SEATS just claimed, not summed
+        // from the list the client sent: only the seat in the DB knows its
+        // berth level, and the level is a factor of the price.
         List<Seat> seats = seatRepository.findByHold(hold.getId());
         long total = 0L;
         for (Seat seat : seats) {
@@ -92,17 +94,17 @@ public class HoldTransactionService {
     }
 
     /**
-     * GHI DANH SÁCH HÀNH KHÁCH — chỉ khi lượt giữ còn sống.
+     * WRITE THE PASSENGER LIST — only while the hold is alive.
      *
-     *   ① lockIfHolding(): còn hạn thì khoá dòng hold tới hết transaction
-     *   ② xoá danh sách cũ, ghi danh sách mới
+     *   ① lockIfHolding(): if still valid, lock the hold row until the transaction ends
+     *   ② delete the old list, write the new one
      *
-     * Kiểm "còn hạn" bằng if (hold.isHolding(now)) ở tầng trên là KHÔNG ĐỦ:
-     * giữa lúc đọc và lúc ghi, job có thể vừa thu hồi, hoặc tab khác của
-     * chính khách vừa bấm thanh toán. Gộp vào câu UPDATE thì MySQL kiểm trên
-     * giá trị mới nhất và giữ khoá cho tới lúc COMMIT.
+     * Checking "still valid" with if (hold.isHolding(now)) in the layer above
+     * is NOT ENOUGH: between the read and the write, the job may release it,
+     * or another tab of the same customer may press pay. Folding the check into
+     * the UPDATE makes MySQL check the latest value and hold the lock until COMMIT.
      *
-     * @return danh sách vừa ghi, hoặc null nếu lượt giữ không còn dùng được
+     * @return the list just written, or null if the hold can no longer be used
      */
     @Transactional(rollbackFor = Exception.class)
     public List<HoldPassenger> replacePassengers(Hold hold, List<HoldPassenger> passengers) {
@@ -114,34 +116,34 @@ public class HoldTransactionService {
     }
 
     /**
-     * TRẢ CHỖ cho một lượt giữ. Dùng chung cho cả hai đường:
-     * user bấm huỷ, và job quét hết hạn.
+     * RETURN THE SEATS of a hold. Shared by both paths:
+     * the user cancelling, and the expiry job.
      *
-     * THỨ TỰ LÀ QUAN TRỌNG — đánh dấu TRƯỚC, trả ghế SAU:
+     * ORDER MATTERS — mark FIRST, free the seats AFTER:
      *
-     *   ① markReleased() có điều kiện WHERE status = 0
-     *      -> 0 dòng nghĩa là người khác đã xử lý xong rồi, mình rút lui,
-     *         KHÔNG đụng vào ghế. Đây là thứ chặn trả chỗ hai lần.
-     *   ② chỉ người sửa được 1 dòng mới có quyền thả ghế.
+     *   ① markReleased() has WHERE status = 0
+     *      -> 0 rows means someone else already handled it; back off and
+     *         DO NOT touch the seats. This is what prevents releasing twice.
+     *   ② only whoever changed 1 row may free the seats.
      *
-     * Làm ngược lại (thả ghế trước, đánh dấu sau) thì crash ở giữa sẽ để lại
-     * ghế đã trống mà hold vẫn status = 0 — lượt quét sau chạy lại lần nữa,
-     * và lần này ghế có thể đã thuộc về khách khác.
+     * Done the other way round (free seats first, mark after), a crash in
+     * between leaves the seats free while the hold still has status = 0 — the
+     * next scan runs again, and this time the seats may belong to someone else.
      *
-     * releaseByHold() còn một lớp chắn nữa: WHERE seat.status = 1. Ghế đã
-     * bán (status = 2) không bao giờ bị kéo ngược về trống.
+     * releaseByHold() has one more guard: WHERE seat.status = 1. A sold seat
+     * (status = 2) is never pulled back to free.
      *
-     * @return true nếu CHÍNH LẦN GỌI NÀY trả được chỗ
+     * @return true if THIS CALL released the seats
      */
     @Transactional(rollbackFor = Exception.class)
     public boolean releaseOne(Hold hold) {
         int changed = holdRepository.markReleased(hold.getId(), LocalDateTime.now());
         if (changed == 0) {
-            log.debug("[HOLD] bo qua, da co nguoi xu ly | holdCode={}", hold.getHoldCode());
+            log.debug("[HOLD] skipped, already handled | holdCode={}", hold.getHoldCode());
             return false;
         }
         int freed = seatRepository.releaseByHold(hold.getId());
-        log.debug("[HOLD] tra lai {} cho | holdCode={}", freed, hold.getHoldCode());
+        log.debug("[HOLD] returned {} seats | holdCode={}", freed, hold.getHoldCode());
         return true;
     }
 }

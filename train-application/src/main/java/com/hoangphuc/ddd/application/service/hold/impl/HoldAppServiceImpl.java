@@ -10,6 +10,7 @@ import com.hoangphuc.ddd.application.service.hold.HoldTransactionService;
 import com.hoangphuc.ddd.application.service.hold.SeatUnavailableException;
 import com.hoangphuc.ddd.application.service.pricing.Journey;
 import com.hoangphuc.ddd.application.service.pricing.JourneyPricingService;
+import com.hoangphuc.ddd.application.service.queue.QueueAppService;
 import com.hoangphuc.ddd.domain.model.entity.Hold;
 import com.hoangphuc.ddd.domain.model.entity.HoldPassenger;
 import com.hoangphuc.ddd.domain.model.entity.Seat;
@@ -46,44 +47,56 @@ public class HoldAppServiceImpl implements HoldAppService {
     private final HoldTransactionService holdTransactionService;
     private final JourneyPricingService journeyPricingService;
     private final TicketDetailDomainService ticketDetailDomainService;
+    private final QueueAppService queueAppService;
 
     /**
-     * Giữ bao lâu. Kiểu Duration chứ không phải long phút, để cấu hình viết
-     * được "10m" khi chạy thật và "30s" khi ngồi test job — Spring tự đổi
-     * chuỗi sang Duration, không phải tự nhân chia.
+     * How long a hold lasts. A Duration rather than a long of minutes, so the
+     * config can say "10m" in production and "30s" when testing the job —
+     * Spring converts the string to a Duration, no manual arithmetic.
      */
     @Value("${app.hold.duration:10m}")
     private Duration holdDuration;
 
-    /** Mỗi lượt quét dọn tối đa bao nhiêu — giữ transaction ngắn. */
+    /** Max holds released per scan — keeps transactions short. */
     @Value("${app.hold.release-batch:200}")
     private int releaseBatch;
 
     /**
-     * Luồng giữ chỗ theo ghế:
+     * Per-seat hold flow:
      *
-     *   ⓪ cổng nghiệp vụ   - chưa đụng tới ghế nào, thoát tự do
-     *   ① 1 transaction    - ghi hold + giành ghế, hỏng thì rollback cả hai
+     *   ⓪ business gate    - no seat touched yet, free to bail out
+     *   ① 1 transaction    - write the hold + claim seats, roll back both on failure
      *
-     * Ngắn hơn hẳn bản giữ theo số lượng trước đây, vì KHÔNG CÒN REDIS.
-     * Ở mô hình đếm kho, Redis đứng trước MySQL để chặn sớm hàng nghìn lượt
-     * tranh nhau một con số. Ở mô hình theo ghế thì mỗi ghế là một dòng
-     * riêng, hai khách chọn hai ghế khác nhau không hề đụng nhau — chỉ khi
-     * chọn TRÙNG ĐÚNG một ghế mới phải phân xử, và lúc đó câu UPDATE ...
-     * WHERE status = 0 của MySQL đã đủ làm trọng tài. Thêm Redis vào chỉ là
-     * thêm một nguồn sự thật thứ hai phải giữ cho khớp.
+     * Much shorter than the old quantity-based version because there is NO REDIS.
+     * In the stock-count model, Redis sits in front of MySQL to turn away
+     * thousands of requests fighting over one number. In the per-seat model
+     * every seat is its own row, so two customers picking different seats never
+     * touch each other — only when they pick the EXACT same seat does someone
+     * have to referee, and MySQL's UPDATE ... WHERE status = 0 is enough for
+     * that. Adding Redis would only add a second source of truth to keep in sync.
      */
     @Override
     public HoldResult createHold(HoldCommand command) {
-        log.info("[HOLD] createHold | trip={} hang={} cho={} {}->{}",
+        log.info("[HOLD] createHold | trip={} class={} seats={} {}->{}",
                 command.tripId(), command.seatClass(), command.seatIds(),
                 command.fromCode(), command.toCode());
+
+        // ===== Waiting room gatekeeper =====
+        // Checked BEFORE anything else, even before reading MySQL: the whole
+        // point of the waiting room is to keep load outside the door, and if
+        // people without a pass may still touch the DB, the door holds nothing
+        // back. Without this line anyone calling the API directly skips the
+        // queue — the waiting room becomes decoration.
+        if (!queueAppService.isAdmitted(command.queueToken())) {
+            log.info("[HOLD] rejected: not admitted by the waiting room | token={}", command.queueToken());
+            return HoldResult.fail(HoldResult.Status.QUEUE_REQUIRED);
+        }
 
         if (command.seatIds() == null || command.seatIds().isEmpty()) {
             return HoldResult.fail(HoldResult.Status.SEAT_TAKEN);
         }
 
-        // ===== Cổng nghiệp vụ =====
+        // ===== Business gate =====
         Optional<Trip> found = tripRepository.findById(command.tripId());
         if (found.isEmpty()) {
             return HoldResult.fail(HoldResult.Status.TRIP_NOT_FOUND);
@@ -97,38 +110,39 @@ public class HoldAppServiceImpl implements HoldAppService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        // isSaleOpen(), KHÔNG phải resolveSaleWindow(): cái sau ưu tiên đợt
-        // sắp tới để trang chủ đếm ngược, nên nó trả "chưa mở" ngay cả khi
-        // đợt hiện tại đang bán. Dùng nhầm là khoá cửa đúng lúc đông khách.
+        // isSaleOpen(), NOT resolveSaleWindow(): the latter prefers the upcoming
+        // sale so the home page can count down, so it says "not open" even while
+        // the current sale is running. Using it here locks the door right when
+        // the crowd arrives.
         if (!ticketDetailDomainService.isSaleOpen(now)) {
             return HoldResult.fail(HoldResult.Status.NOT_ON_SALE);
         }
-        // Tàu chạy hôm qua thì không còn gì để bán. Phải kiểm riêng chứ không
-        // dựa vào việc ghế còn trống hay không: ghế của chuyến đã chạy xong
-        // vẫn đang ở trạng thái trống.
+        // A train that left yesterday has nothing left to sell. This must be
+        // checked separately rather than relying on whether seats are free:
+        // seats of a trip that already ran are still in the free state.
         if (trip.getServiceDate().isBefore(LocalDate.now())) {
             return HoldResult.fail(HoldResult.Status.SALE_ENDED);
         }
 
-        // ===== Một transaction =====
+        // ===== One transaction =====
         String holdCode = "HOLD-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase();
         LocalDateTime expireAt = now.plus(holdDuration);
         try {
             Hold hold = holdTransactionService.createSeatHold(
                     command, journey.get(), holdCode, expireAt);
 
-            log.info("[HOLD] giu {} cho OK | holdCode={} het han luc {}",
+            log.info("[HOLD] held {} seats | holdCode={} expires at {}",
                     hold.getSeatCount(), holdCode, expireAt);
             return HoldResult.success(toDTO(hold, journey.get(), now));
 
         } catch (SeatUnavailableException e) {
-            // Transaction ĐÃ ROLLBACK: dòng hold biến mất, những ghế vừa kịp
-            // giành được cũng trở lại trống. Không phải dọn tay gì cả.
-            log.info("[HOLD] cho da co nguoi giu | trip={} {}", command.tripId(), e.getMessage());
+            // The transaction HAS ROLLED BACK: the hold row is gone, and seats
+            // that were claimed in time are free again. Nothing to clean up by hand.
+            log.info("[HOLD] seat already taken | trip={} {}", command.tripId(), e.getMessage());
             return HoldResult.fail(HoldResult.Status.SEAT_TAKEN);
 
         } catch (Exception e) {
-            log.error("[HOLD] loi, MySQL da rollback | trip={}", command.tripId(), e);
+            log.error("[HOLD] error, MySQL rolled back | trip={}", command.tripId(), e);
             return HoldResult.fail(HoldResult.Status.ERROR);
         }
     }
@@ -142,8 +156,9 @@ public class HoldAppServiceImpl implements HoldAppService {
         Hold hold = found.get();
         LocalDateTime now = LocalDateTime.now();
 
-        // Quá hạn nhưng job chưa kịp quét tới: trả lời theo SỰ THẬT ngay lúc
-        // hỏi, đừng đợi job. Người dùng không cần biết job chạy mỗi 10 giây.
+        // Expired but the job has not reached it yet: answer with the TRUTH at
+        // the moment of asking, do not wait for the job. Users do not need to
+        // know the job runs every 10 seconds.
         if (!hold.isHolding(now)) {
             return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
         }
@@ -151,12 +166,12 @@ public class HoldAppServiceImpl implements HoldAppService {
     }
 
     /**
-     * Bước "nhập thông tin hành khách" giữa giữ chỗ và thanh toán.
+     * The "enter passenger details" step between holding and payment.
      *
-     *   ⓪ hold còn sống không        - đọc thường, chặn sớm phần lớn ca hết giờ
-     *   ① khớp đúng từng ghế          - mỗi ghế đúng một người, không thừa không thiếu
-     *   ② chốt giá từng người         - giá ghế × giảm giá, tính Ở SERVER
-     *   ③ 1 transaction               - khoá hold, thay danh sách cũ bằng danh sách mới
+     *   ⓪ is the hold alive          - plain read, catches most expired cases early
+     *   ① matches every seat         - exactly one person per seat, none extra, none missing
+     *   ② fix each person's price    - seat fare × discount, computed ON THE SERVER
+     *   ③ 1 transaction              - lock the hold, replace the old list with the new one
      */
     @Override
     public HoldResult savePassengers(String holdCode, List<PassengerCommand> passengers) {
@@ -170,9 +185,9 @@ public class HoldAppServiceImpl implements HoldAppService {
             return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
         }
 
-        // ① So bằng TẬP HỢP mã ghế, không so số lượng: 2 người cho 2 ghế
-        // nhưng cả hai cùng ghi ghế C3-1 thì đếm vẫn khớp mà ghế C3-2 không
-        // có ai ngồi. Tập hợp thì trùng mã sẽ ra kích thước nhỏ hơn.
+        // ① Compare SETS of seat codes, not counts: 2 people for 2 seats who
+        // both claim seat C3-1 still match by count while nobody sits in C3-2.
+        // With a set, a duplicate code makes the set smaller.
         List<Seat> seats = seatRepository.findByHold(hold.getId());
         Map<String, Seat> seatByCode = new HashMap<>();
         for (Seat seat : seats) {
@@ -183,13 +198,14 @@ public class HoldAppServiceImpl implements HoldAppService {
             requested.add(p.seatId());
         }
         if (requested.size() != passengers.size() || !requested.equals(seatByCode.keySet())) {
-            log.info("[HOLD] hanh khach khong khop ghe | holdCode={} ghe={} gui len={}",
+            log.info("[HOLD] passengers do not match seats | holdCode={} seats={} sent={}",
                     holdCode, seatByCode.keySet(), requested);
             return HoldResult.fail(HoldResult.Status.PASSENGER_MISMATCH);
         }
 
-        // ② Giá gốc lấy từ GHẾ THẬT trong DB, giảm giá lấy từ LUẬT ở domain.
-        // Client chỉ gửi "tôi là sinh viên", không gửi con số nào về tiền.
+        // ② The base price comes from the REAL SEAT in the DB, the discount from
+        // the RULE in the domain. The client only says "I am a student" and
+        // never sends any amount of money.
         Optional<Journey> journey = journeyOf(hold);
         if (journey.isEmpty()) {
             return HoldResult.fail(HoldResult.Status.ERROR);
@@ -212,14 +228,14 @@ public class HoldAppServiceImpl implements HoldAppService {
         try {
             List<HoldPassenger> saved = holdTransactionService.replacePassengers(hold, rows);
             if (saved == null) {
-                // Vừa hết hạn, hoặc vừa được đổi thành đơn, trong khe giữa ⓪ và ③.
+                // Expired, or turned into an order, in the gap between ⓪ and ③.
                 return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
             }
-            log.info("[HOLD] luu {} hanh khach | holdCode={}", saved.size(), holdCode);
+            log.info("[HOLD] saved {} passengers | holdCode={}", saved.size(), holdCode);
             return HoldResult.success(toDTO(hold, journey.get(), now));
 
         } catch (Exception e) {
-            log.error("[HOLD] loi khi luu hanh khach, MySQL da rollback | holdCode={}", holdCode, e);
+            log.error("[HOLD] error saving passengers, MySQL rolled back | holdCode={}", holdCode, e);
             return HoldResult.fail(HoldResult.Status.ERROR);
         }
     }
@@ -233,11 +249,11 @@ public class HoldAppServiceImpl implements HoldAppService {
 
         boolean released = holdTransactionService.releaseOne(found.get());
         if (!released) {
-            // 0 dòng: job vừa dọn xong, hoặc đã đổi thành đơn hàng.
+            // 0 rows: the job just cleaned it up, or it has become an order.
             return HoldResult.fail(HoldResult.Status.HOLD_EXPIRED);
         }
 
-        log.info("[HOLD] user huy | holdCode={}", holdCode);
+        log.info("[HOLD] cancelled by user | holdCode={}", holdCode);
         return HoldResult.success(null);
     }
 
@@ -249,18 +265,18 @@ public class HoldAppServiceImpl implements HoldAppService {
             try {
                 if (holdTransactionService.releaseOne(hold)) {
                     count++;
-                    log.info("[HOLD-JOB] thu hoi | holdCode={} trip={} so cho={}",
+                    log.info("[HOLD-JOB] released | holdCode={} trip={} seats={}",
                             hold.getHoldCode(), hold.getTripId(), hold.getSeatCount());
                 }
             } catch (Exception e) {
-                // Một lượt lỗi không được làm chết cả lô — lượt quét sau thử lại.
-                log.error("[HOLD-JOB] loi khi thu hoi | holdCode={}", hold.getHoldCode(), e);
+                // One failure must not kill the whole batch — the next scan retries.
+                log.error("[HOLD-JOB] error while releasing | holdCode={}", hold.getHoldCode(), e);
             }
         }
         return count;
     }
 
-    /** Dựng lại hành trình đã lưu trên hold, để tính đúng giá từng chỗ. */
+    /** Rebuild the journey stored on the hold, so each seat is priced correctly. */
     private Optional<Journey> journeyOf(Hold hold) {
         return tripRepository.findById(hold.getTripId())
                 .flatMap(trip -> journeyPricingService.resolve(

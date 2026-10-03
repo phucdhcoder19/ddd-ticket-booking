@@ -12,46 +12,47 @@ import java.util.List;
 /**
  * PUT /holds/{holdCode}/passengers
  *
- * Luat kiem tra o day CHEP DUNG luat cua frontend (lib/validate.ts): cai gi
- * frontend cho qua thi server cung phai cho qua, neu khong khach dien dung
- * het ma van bi tu choi. Frontend kiem de bao loi dep, server kiem vi khong
- * bao gio duoc tin client.
+ * The rules here MIRROR the frontend rules (lib/validate.ts): whatever the
+ * frontend accepts, the server must accept too, otherwise a customer who
+ * filled everything in correctly still gets rejected. The frontend validates
+ * to show friendly errors; the server validates because the client can never
+ * be trusted.
  */
 @Data
 public class SavePassengersRequest {
 
-    @NotEmpty(message = "phai co it nhat 1 hanh khach")
-    @Size(max = 4, message = "moi luot giu toi da 4 cho")
+    @NotEmpty(message = "at least 1 passenger is required")
+    @Size(max = 4, message = "a hold has at most 4 seats")
     @Valid
     private List<PassengerRequest> passengers;
 
     @Data
     public static class PassengerRequest {
 
-        @NotBlank(message = "seatId khong duoc trong")
+        @NotBlank(message = "seatId is required")
         private String seatId;
 
-        /** It nhat hai tu (ho + ten), chi chu cai, dau cach va dau nhay don. */
-        @NotBlank(message = "ho ten khong duoc trong")
-        @Size(max = 100, message = "ho ten toi da 100 ky tu")
+        /** At least two words (first + last name), letters, spaces and apostrophes only. */
+        @NotBlank(message = "full name is required")
+        @Size(max = 100, message = "full name is at most 100 characters")
         @Pattern(regexp = "^\\s*[\\p{L}']+(\\s+[\\p{L}']+)+\\s*$",
-                 message = "ho ten gom ca ho va ten, chi chu cai")
+                 message = "full name must include first and last name, letters only")
         private String fullName;
 
-        /** CCCD 12 so, hoac CMND cu 9 so. */
-        @NotBlank(message = "so CCCD khong duoc trong")
+        /** 12-digit national ID, or a 9-digit legacy ID card. */
+        @NotBlank(message = "ID number is required")
         @Pattern(regexp = "^\\s*(\\d{12}|\\d{9})\\s*$",
-                 message = "so CCCD gom 12 chu so (hoac 9 voi CMND cu)")
+                 message = "ID number must have 12 digits (or 9 for a legacy ID card)")
         private String idNumber;
 
-        /** 0912345678, 0912 345 678, 0912.345.678, +84912345678 deu hop le. */
-        @NotBlank(message = "so dien thoai khong duoc trong")
+        /** 0912345678, 0912 345 678, 0912.345.678 and +84912345678 are all valid. */
+        @NotBlank(message = "phone number is required")
         @Pattern(regexp = "^\\s*(\\+84|0)([\\s.]*\\d){9}[\\s.]*$",
-                 message = "so dien thoai 10 chu so, bat dau bang 0")
+                 message = "phone number must have 10 digits and start with 0")
         private String phone;
 
         @Pattern(regexp = "NONE|STUDENT|CHILD|SENIOR",
-                 message = "discount chi nhan NONE, STUDENT, CHILD, SENIOR")
+                 message = "discount must be one of NONE, STUDENT, CHILD, SENIOR")
         private String discount;
     }
 }

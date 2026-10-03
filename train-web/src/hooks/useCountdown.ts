@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Đếm ngược tới một mốc thời gian.
+ * Counts down to a moment in time.
  *
- * Hai điểm quan trọng cho đồng hồ giữ chỗ:
- *  1. Mốc hết hạn lấy từ server (expiresAt), client chỉ hiển thị — đổi giờ máy
- *     không kéo dài được thời gian giữ chỗ.
- *  2. Dùng Date.now() thay vì cộng dồn 1 giây mỗi tick, vì trình duyệt trên
- *     điện thoại sẽ bóp nghẹt setInterval khi tab chạy nền; khi quay lại tab,
- *     số giây còn lại vẫn chính xác.
+ * Two things that matter for the hold timer:
+ *  1. The expiry comes from the server (expiresAt), the client only displays
+ *     it — changing the device clock cannot extend a hold.
+ *  2. Uses Date.now() instead of adding 1 second per tick, because mobile
+ *     browsers throttle setInterval in background tabs; when the user comes
+ *     back, the remaining seconds are still accurate.
  */
 export function useCountdown(
   target: string | Date | null,
@@ -39,7 +39,7 @@ export function useCountdown(
     };
     tick();
     const id = setInterval(tick, intervalMs);
-    // Tab bị ẩn rồi hiện lại: đồng bộ ngay, không đợi tick kế tiếp
+    // Tab hidden then shown again: sync right away, do not wait for the next tick
     const onVisible = () => document.visibilityState === "visible" && tick();
     document.addEventListener("visibilitychange", onVisible);
     return () => {

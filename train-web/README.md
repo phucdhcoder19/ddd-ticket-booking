@@ -1,6 +1,6 @@
-# Vé Tàu Tết — Giao diện đặt vé tàu dịp Tết
+# traintix — Lunar New Year train booking UI
 
-React 19 + TypeScript + Tailwind CSS 4 + Vite. Mobile-first, tiếng Việt, đang chạy trên **mock data**.
+React 19 + TypeScript + Tailwind CSS 4 + Vite. Mobile-first. Runs on **mock data** or on the real backend.
 
 ```bash
 npm install
@@ -8,81 +8,83 @@ npm run dev      # http://localhost:5180
 npm run build
 ```
 
-## Nối với backend thật
+## Connecting to the real backend
 
-Toàn bộ lời gọi mạng nằm sau một file duy nhất: `src/api/client.ts`. Mỗi hàm có hai
-nhánh — mock và `request()` thật — với cùng chữ ký. Đổi `.env`:
+Every network call sits behind a single file: `src/api/client.ts`. Each function has two
+branches — mock and the real `request()` — with the same signature. Change `.env`:
 
 ```env
 VITE_USE_MOCK=false
-VITE_API_BASE_URL=http://localhost:8080/api
+VITE_API_BASE_URL=http://localhost:9999/api
 ```
 
-Không có file nào trong `src/pages` hay `src/components` biết đến `fetch`.
+No file in `src/pages` or `src/components` knows about `fetch`.
 
-### Hợp đồng API mà giao diện đang trông đợi
+### API contract the UI expects
 
-| Method | Đường dẫn | Ghi chú |
+| Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/stations` | |
-| GET | `/sale-window` | Trả `opensAt`, `serverNow` |
+| GET | `/sale-window` | Returns `opensAt`, `serverNow` |
 | GET | `/trips?from&to&date&passengers` | |
 | GET | `/trips/{id}/carriages?seatClass=` | |
-| POST | `/holds` | `{tripId, seatClass, seatIds}` → `Hold`. **Cần `Idempotency-Key`** |
+| POST | `/holds` | `{tripId, seatClass, seatIds}` → `Hold`. **Requires `Idempotency-Key`** and `X-Queue-Token` |
 | GET / DELETE | `/holds/{id}` | |
 | PUT | `/holds/{id}/passengers` | |
-| POST | `/orders` | `{holdId, paymentMethod}`. **Cần `Idempotency-Key`** |
-| GET | `/orders/{id}` | Giao diện poll 2 giây/lần |
+| POST | `/orders` | `{holdId, paymentMethod}`. **Requires `Idempotency-Key`** |
+| GET | `/orders/{id}` | The UI polls every 2 seconds |
 | GET | `/me/tickets` · POST `/tickets/{id}/refund` | |
-| POST | `/queue` · GET `/queue/{token}` | Phòng chờ |
+| POST | `/queue` · GET `/queue/{token}` | Waiting room |
 
-**Mã lỗi giao diện dựa vào** (xem `src/lib/http.ts`):
+**Error codes the UI relies on** (see `src/lib/http.ts`):
 
 - `409` + body `{"code":"SEAT_TAKEN", "details":{"takenSeatIds":[], "suggestedSeatIds":[]}}`
-  → bỏ chọn đúng ghế đã mất, làm nổi ghế gợi ý. `409` không có `code` được hiểu là hết vé.
-- `410` → hết hạn giữ chỗ, hiện hộp thoại bắt buộc chọn lại chỗ.
-- `429` (+ `Retry-After` nếu có) → tự retry backoff luỹ thừa có jitter, hiện dải băng
-  "đang thử lại" cho người dùng. `5xx` và timeout cũng retry; `4xx` khác thì không.
+  → deselect exactly the lost seats and highlight the suggested ones. A `409` without `code` means sold out.
+- `410` → the hold expired, show the dialog that forces picking seats again.
+- `403` → not admitted by the waiting room (or the admission expired), go back to the waiting room.
+- `429` (+ `Retry-After` if present) → automatic exponential backoff with jitter, with a
+  "retrying" banner for the user. `5xx` and timeouts are retried too; other `4xx` are not.
 
-Server **phải** tôn trọng header `Idempotency-Key`: giao diện gửi cùng một key qua mọi
-lần retry của cùng một thao tác, và chỉ đổi key khi người dùng bắt đầu thao tác mới.
+The server **must** honour the `Idempotency-Key` header: the UI sends the same key on every
+retry of the same action, and only changes the key when the user starts a new action.
 
-## Cấu trúc
+## Structure
 
 ```
 src/
-├─ lib/         format (VND, dd/MM/yyyy) · lunar (âm lịch, cao điểm Tết) · http (retry/backoff) · validate
-├─ api/         types · errors (ApiError + câu chữ tiếng Việt) · client · mock/
+├─ lib/         format (VND, dd/MM/yyyy) · lunar (lunar calendar, New Year peak) · http (retry/backoff) · validate · queuePass
+├─ api/         types · errors (ApiError + user-facing messages) · client · mock/
 ├─ hooks/       useAsync (loading/empty/error/success) · useCountdown · useSubmitLock
-├─ store/       BookingContext (sessionStorage, sống sót F5) · ToastContext
+├─ store/       BookingContext (sessionStorage, survives F5) · ToastContext
 ├─ components/  SeatMap · TrainCard · TicketCard · QueueStatus · CountdownTimer · HoldBar
 │               LunarDatePicker · PassengerForm · OfflineBanner · ui/
-└─ pages/       7 màn hình
+└─ pages/       7 screens
 ```
 
-## Thử các tình huống hỏng
+## Trying failure scenarios
 
-Mock server nhận lệnh từ console trình duyệt:
+The mock server takes commands from the browser console:
 
 ```js
-__mock.overloadRate = 0.9    // ép 429 để xem dải băng tự retry
-__mock.seatStealRate = 1     // ghế luôn bị giật mất khi bấm giữ chỗ
-__mock.paymentFailRate = 1   // thanh toán luôn thất bại
-__mock.timeoutRate = 0.5     // mạng treo
-__mock.holdSeconds = 20      // rút đồng hồ giữ chỗ xuống 20 giây
-__mock.queueEnabled = false  // bỏ qua phòng chờ
+__mock.overloadRate = 0.9    // force 429s to see the auto-retry banner
+__mock.seatStealRate = 1     // seats are always snatched when holding
+__mock.paymentFailRate = 1   // payment always fails
+__mock.timeoutRate = 0.5     // hanging network
+__mock.holdSeconds = 20      // shrink the hold timer to 20 seconds
+__mock.queueEnabled = false  // skip the waiting room
 ```
 
 ## Design tokens
 
-Định nghĩa trong `src/index.css` dưới `@theme`, dùng qua class Tailwind:
+Defined in `src/index.css` under `@theme`, used through Tailwind classes:
 
-| Token | Giá trị | Dùng cho |
+| Token | Value | Used for |
 | --- | --- | --- |
-| `son-600` | `#c41e28` | Nút chính, nhấn mạnh (6.4:1 với chữ trắng) |
-| `son-700` | `#a41722` | Header, hover |
-| `mai-400` | `#d99a2b` | Vàng ấm — viền, badge, họa tiết. Không làm nền chữ trắng |
-| `ink-900` | `#1c1917` | Chữ chính |
-| `canvas` | `#fdfbf7` | Nền trang |
+| `brand-500` | `#0194f3` | Brand blue, background of large buttons |
+| `brand-600` | `#0d73c8` | Primary buttons, links, blue text on white (4.6:1) |
+| `accent-500` | `#ff5e1f` | Search button, price badges |
+| `accent-600` | `#e8490b` | Price text on white (4.5:1) |
+| `ink-900` | `#1a1a1a` | Main text |
+| `canvas` | `#f5f7fa` | Page background |
 
-Chiều cao chạm: nút `md` 48px, `lg` 56px, ô ghế 44px. Font Be Vietnam Pro, cỡ gốc 16px.
+Touch targets: `md` buttons 48px, `lg` 56px, seat cells 44px. Font Plus Jakarta Sans, base size 16px.

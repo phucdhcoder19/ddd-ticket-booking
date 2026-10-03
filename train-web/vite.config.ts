@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     port: 5180,
     proxy: {
-      // Khi có backend that, bo VITE_USE_MOCK=false la chay duoc ngay
+      // With a real backend, set VITE_USE_MOCK=false and it works right away
       '/api': { target: 'http://localhost:8080', changeOrigin: true },
     },
   },

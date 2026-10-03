@@ -2,11 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Hold, Passenger, SearchQuery, SeatClassCode, Trip } from "@/api/types";
 
 /**
- * Trạng thái của một lượt đặt vé, đi xuyên các màn 3 → 6.
+ * State of one booking, carried across screens 3 → 6.
  *
- * Lưu vào sessionStorage: người dùng lỡ F5 giữa chừng (rất hay xảy ra khi
- * mạng chậm) thì vẫn còn phiên giữ chỗ và đồng hồ đếm ngược — mốc hết hạn là
- * thời điểm tuyệt đối do server cấp nên không bị "làm mới" khi tải lại trang.
+ * Saved to sessionStorage: if the user presses F5 midway (very common on slow
+ * networks), the hold and its countdown survive — the expiry is an absolute
+ * moment issued by the server, so reloading the page does not "reset" it.
  */
 export type BookingState = {
   query: SearchQuery | null;
@@ -21,7 +21,7 @@ const EMPTY: BookingState = {
   query: null, trip: null, seatClass: null, hold: null, passengers: [], orderId: null,
 };
 
-const STORAGE_KEY = "vetau.booking.v1";
+const STORAGE_KEY = "trainbooking.booking.v1";
 
 type BookingApi = BookingState & {
   setQuery: (q: SearchQuery) => void;
@@ -41,7 +41,7 @@ function load(): BookingState {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as BookingState;
-    // Phiên giữ chỗ đã hết hạn từ trước khi tải lại trang thì bỏ luôn
+    // A hold that expired before the page was reloaded is dropped
     if (parsed.hold && new Date(parsed.hold.expiresAt).getTime() < Date.now()) {
       return { ...parsed, hold: null, passengers: [], orderId: null };
     }
@@ -58,7 +58,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      /* chế độ riêng tư chặn storage — bỏ qua, chỉ mất khả năng khôi phục sau F5 */
+      /* private mode blocks storage — ignore, we only lose recovery after F5 */
     }
   }, [state]);
 
@@ -74,7 +74,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       hold,
-      // Dựng sẵn khung thông tin hành khách theo đúng số chỗ vừa giữ
+      // Prepare one passenger form per seat just held
       passengers: hold.items.map(
         (item, i) =>
           s.passengers[i] ?? {
@@ -112,6 +112,6 @@ export function BookingProvider({ children }: { children: ReactNode }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useBooking() {
   const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useBooking phải nằm trong BookingProvider");
+  if (!ctx) throw new Error("useBooking must be used inside BookingProvider");
   return ctx;
 }

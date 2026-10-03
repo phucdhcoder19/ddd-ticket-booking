@@ -8,18 +8,18 @@ import java.util.List;
 
 public interface HoldAppService {
 
-    /** Giữ những chỗ khách vừa chọn, kèm hạn chót. */
+    /** Hold the seats the customer just picked, with a deadline. */
     HoldResult createHold(HoldCommand command);
 
-    /** Client polling để đồng bộ đồng hồ đếm ngược với giờ server. */
+    /** Client polling to keep the countdown in sync with the server clock. */
     HoldResult getHold(String holdCode);
 
-    /** Ghi tên người ngồi từng ghế. Gọi lại nhiều lần được, lần sau thay lần trước. */
+    /** Record who sits in each seat. Can be called repeatedly; each call replaces the previous one. */
     HoldResult savePassengers(String holdCode, List<PassengerCommand> passengers);
 
-    /** User bấm quay lại: trả chỗ ngay, không đợi hết giờ. */
+    /** The user pressed back: return the seats now, do not wait for expiry. */
     HoldResult releaseHold(String holdCode);
 
-    /** Job chạy nền gọi. Trả về số lượt đã thu hồi được trong lượt quét này. */
+    /** Called by the background job. Returns how many holds were released in this scan. */
     int releaseExpiredHolds();
 }

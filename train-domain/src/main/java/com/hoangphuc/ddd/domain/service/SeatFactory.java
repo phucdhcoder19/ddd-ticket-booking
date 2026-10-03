@@ -7,20 +7,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Dựng danh sách ghế của một toa cho một chuyến.
+ * Builds the seat list of one carriage for one trip.
  *
- * Là class tiện ích tĩnh, KHÔNG phải interface + impl như các domain service
- * khác trong repo. Lý do: nó không phụ thuộc vào gì cả — không repository,
- * không cache, không thời gian. Cùng đầu vào luôn cho cùng đầu ra.
- * Thứ như vậy không có gì để thay thế, nên tạo interface chỉ là thêm một
- * file rỗng phải mở ra mỗi lần đọc code.
+ * A static utility class, NOT an interface + impl like the other domain
+ * services in this repo. Reason: it depends on nothing — no repository, no
+ * cache, no clock. The same input always gives the same output. There is
+ * nothing to swap out, so an interface would only be one more empty file to
+ * open every time you read the code.
  */
 public final class SeatFactory {
 
     private SeatFactory() {
     }
 
-    /** Toa ngồi: 4 ghế mỗi hàng, 2 bên lối đi. */
+    /** Seating carriage: 4 seats per row, 2 on each side of the aisle. */
     private static final int SEATS_PER_ROW = 4;
 
     public static List<Seat> build(Long tripId, TrainCarriage carriage) {
@@ -33,10 +33,10 @@ public final class SeatFactory {
     }
 
     /**
-     * Toa ngồi mềm — đánh số chạy liền từ 1.
+     * Soft seat carriage — numbered continuously from 1.
      *
-     *   hàng 1:  [1] [2] | lối đi | [3] [4]
-     *   hàng 2:  [5] [6] | lối đi | [7] [8]
+     *   row 1:  [1] [2] | aisle | [3] [4]
+     *   row 2:  [5] [6] | aisle | [7] [8]
      */
     private static List<Seat> buildSeatCar(Long tripId, TrainCarriage carriage) {
         List<Seat> seats = new ArrayList<>(carriage.seatCount());
@@ -50,29 +50,31 @@ public final class SeatFactory {
     }
 
     /**
-     * Toa nằm — mỗi hàng là một KHOANG, trong khoang xếp theo tầng.
+     * Sleeper carriage — each row is a COMPARTMENT, ordered by level inside it.
      *
-     * Khoang 4 (2 tầng, 2 bên):        Khoang 6 (3 tầng, 2 bên):
-     *   tầng 1:  [1] [2]                 tầng 1:  [1] [2]
-     *   tầng 2:  [3] [4]                 tầng 2:  [3] [4]
-     *                                    tầng 3:  [5] [6]
+     * 4-berth (2 levels, 2 sides):     6-berth (3 levels, 2 sides):
+     *   level 1:  [1] [2]                level 1:  [1] [2]
+     *   level 2:  [3] [4]                level 2:  [3] [4]
+     *                                    level 3:  [5] [6]
      *
-     * Tầng 1 thấp nhất nên dễ lên xuống — đắt nhất. Giá theo tầng do tầng
-     * trên tính, ở đây chỉ ghi lại berthLevel.
+     * Level 1 is the lowest and easiest to get into — the most expensive. The
+     * price per level is computed by the layer above; here we only record
+     * berthLevel.
      *
-     * rowNo CỦA TOA NẰM LÀ SỐ KHOANG, không phải số tầng. Hai chỗ cùng
-     * rowNo là hai chỗ NGỒI CẠNH NHAU — đó là ý nghĩa của "hàng", và cũng
-     * là cách sơ đồ ghế gom nhóm để vẽ. Nhóm theo tầng thì màn hình hiện ra
-     * ba khối "tầng 1 / tầng 2 / tầng 3" trải dài cả toa, trong khi khách
-     * đi bốn người chỉ muốn biết khoang nào còn đủ bốn giường.
+     * rowNo OF A SLEEPER CARRIAGE IS THE COMPARTMENT NUMBER, not the level. Two
+     * places with the same rowNo are places NEXT TO EACH OTHER — that is what
+     * "row" means, and it is how the seat map groups places for drawing. Group
+     * by level instead and the screen shows three blocks "level 1 / level 2 /
+     * level 3" stretching across the whole carriage, while a family of four
+     * only wants to know which compartment still has four berths.
      *
-     * colNo là vị trí trong khoang, đánh số chạy theo đúng thứ tự vẽ.
+     * colNo is the position within the compartment, numbered in drawing order.
      */
     private static List<Seat> buildBerthCar(Long tripId, TrainCarriage carriage,
                                             int berthsPerCompartment, int levels) {
         List<Seat> seats = new ArrayList<>(carriage.seatCount());
         int label = 1;
-        int sidesPerLevel = berthsPerCompartment / levels;   // khoang 4 -> 2, khoang 6 -> 2
+        int sidesPerLevel = berthsPerCompartment / levels;   // 4-berth -> 2, 6-berth -> 2
 
         for (int comp = 1; comp <= carriage.getRowCount(); comp++) {
             int position = 1;

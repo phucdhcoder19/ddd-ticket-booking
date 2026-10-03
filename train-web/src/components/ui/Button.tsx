@@ -5,10 +5,10 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "md" | "lg";
 
 /**
- * Nút bấm chuẩn của hệ thống.
- * - Chiều cao tối thiểu 48px (lg: 56px) — đủ lớn để bấm bằng ngón cái trên điện thoại.
- * - Khi `loading`, nút bị vô hiệu hoá nhưng vẫn giữ nguyên chiều rộng để layout không giật.
- * - `aria-busy` cho trình đọc màn hình biết đang xử lý.
+ * The system's standard button.
+ * - Minimum height 48px (lg: 56px) — big enough to tap with a thumb on a phone.
+ * - While `loading`, the button is disabled but keeps its width so the layout does not jump.
+ * - `aria-busy` tells screen readers that work is in progress.
  */
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: Variant;
@@ -20,10 +20,10 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-son-600 text-white hover:bg-son-700 active:bg-son-800 shadow-[var(--shadow-soft)]",
+  primary: "bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-[var(--shadow-soft)]",
   secondary: "bg-white text-ink-900 border-2 border-ink-200 hover:border-ink-300 hover:bg-ink-50",
-  ghost: "bg-transparent text-son-700 hover:bg-son-50",
-  danger: "bg-white text-son-700 border-2 border-son-200 hover:bg-son-50",
+  ghost: "bg-transparent text-brand-700 hover:bg-brand-50",
+  danger: "bg-white text-brand-700 border-2 border-brand-200 hover:bg-brand-50",
 };
 
 const SIZES: Record<Size, string> = {

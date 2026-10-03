@@ -11,12 +11,12 @@ import org.springframework.stereotype.Service;
 import java.util.Collections;
 
 /**
- * TUYẾN PHÒNG THỦ THỨ HAI cho việc GHI — giữ tồn kho trong Redis.
+ * SECOND LINE OF DEFENCE for WRITES — keeps the stock count in Redis.
  *
- * Vì sao tách khỏi TicketDetailCacheService?
- *   - Chi tiết vé (tên, giá, mô tả): gần như không đổi  -> cache cả object, TTL 10 phút
- *   - Tồn kho: đổi sau MỖI lần mua                      -> key riêng, kiểu số, sửa bằng Lua
- * Trộn chung thì mỗi lần mua phải serialize lại cả object — vừa chậm vừa dễ sai.
+ * Why separate from TicketDetailCacheService?
+ *   - Ticket detail (name, price, description): almost never changes -> cache the whole object, 10 minute TTL
+ *   - Stock: changes after EVERY purchase                             -> own key, numeric, updated with Lua
+ * Mixing them would mean re-serializing the whole object on every purchase — slow and error-prone.
  */
 @Service
 @Slf4j
@@ -24,12 +24,12 @@ import java.util.Collections;
 public class StockCacheService {
 
     // ---------------------------------------------------------------
-    // TRỪ KHO — nguyên tử.
-    // Redis chạy đơn luồng và coi cả script này là MỘT lệnh,
-    // nên không thread nào chen được vào giữa GET và SET.
-    //   -1 = key không tồn tại (chưa warm-up)
-    //    0 = không đủ vé
-    //    1 = trừ thành công
+    // DEDUCT STOCK — atomically.
+    // Redis is single-threaded and treats the whole script as ONE command,
+    // so no thread can cut in between the GET and the SET.
+    //   -1 = key does not exist (not warmed up)
+    //    0 = not enough stock
+    //    1 = deducted
     // ---------------------------------------------------------------
     private static final String LUA_DEDUCT =
             "local stock = redis.call('GET', KEYS[1]); " +
@@ -41,7 +41,7 @@ public class StockCacheService {
             "end; " +
             "return 0; ";
 
-    // HOÀN KHO — dùng khi DB fail sau khi Redis đã trừ (bù trừ / compensation)
+    // RESTORE STOCK — used when the DB fails after Redis has deducted (compensation)
     private static final String LUA_RESTORE =
             "local stock = redis.call('GET', KEYS[1]); " +
             "if (stock) then " +
@@ -60,7 +60,7 @@ public class StockCacheService {
     private final TicketDetailDomainService ticketDetailDomainService;
 
     /**
-     * Nạp tồn kho từ MySQL lên Redis. Gọi lúc khởi động, hoặc khi phát hiện cache miss.
+     * Load the stock from MySQL into Redis. Called at startup, or on a cache miss.
      */
     public boolean warmUp(Long ticketId) {
         if (ticketId == null) {
@@ -68,7 +68,7 @@ public class StockCacheService {
         }
         TicketDetail detail = ticketDetailDomainService.getTicketDetailById(ticketId);
         if (detail == null) {
-            log.warn("[STOCK] warmUp: khong tim thay ticketId={}", ticketId);
+            log.warn("[STOCK] warmUp: ticket not found ticketId={}", ticketId);
             return false;
         }
         redisInfrasService.setInt(genKey(ticketId), detail.getStockAvailable());
@@ -77,8 +77,8 @@ public class StockCacheService {
     }
 
     /**
-     * Trừ kho trong Redis, nguyên tử.
-     * @return 1 = OK | 0 = hết vé | -1 = chưa có key trong Redis
+     * Deduct stock in Redis, atomically.
+     * @return 1 = OK | 0 = sold out | -1 = key not in Redis yet
      */
     public int deduct(Long ticketId, int quantity) {
         Long result = redisInfrasService.executeScript(
@@ -89,7 +89,7 @@ public class StockCacheService {
     }
 
     /**
-     * Hoàn kho vào Redis. Gọi khi đã trừ Redis nhưng bước sau thất bại.
+     * Put stock back into Redis. Called when Redis was deducted but a later step failed.
      */
     public void restore(Long ticketId, int quantity) {
         redisInfrasService.executeScript(

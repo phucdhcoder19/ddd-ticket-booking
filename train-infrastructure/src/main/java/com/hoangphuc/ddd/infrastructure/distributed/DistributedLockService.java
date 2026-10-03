@@ -1,8 +1,8 @@
 package com.hoangphuc.ddd.infrastructure.distributed;
 
 /**
- * Nơi lấy ổ khoá. Mỗi lockKey là một ổ khoá riêng.
- * Ví dụ "lock:ticket:detail:1" và "lock:ticket:detail:2" không chặn nhau.
+ * Where locks come from. Each lockKey is a separate lock.
+ * For example "lock:ticket:detail:1" and "lock:ticket:detail:2" do not block each other.
  */
 public interface DistributedLockService {
 

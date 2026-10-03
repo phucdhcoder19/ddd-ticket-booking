@@ -16,18 +16,19 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
     Optional<Hold> findByHoldCode(String holdCode);
 
     /**
-     * ĐÓNG LƯỢT GIỮ CHỖ — hai câu dưới đây là toàn bộ bài 18.
+     * CLOSING A HOLD — the two queries below are the whole of lesson 18.
      *
-     * Mệnh đề "AND h.status = 0" chính là cái khoá. InnoDB khoá dòng khi
-     * UPDATE, nên hai bên cùng đụng vào một dòng phải xếp hàng; người đến sau
-     * đọc giá trị MỚI NHẤT, thấy status đã khác 0, điều kiện sai, sửa 0 dòng.
+     * The "AND h.status = 0" clause is the lock. InnoDB locks the row on
+     * UPDATE, so two parties touching the same row must queue; whoever comes
+     * second reads the LATEST value, sees status is no longer 0, the condition
+     * fails, 0 rows updated.
      *
-     * Không cần distributed lock, không cần Redisson. Một mệnh đề WHERE làm hết.
+     * No distributed lock, no Redisson. One WHERE clause does it all.
      *
-     * MỐC THỜI GIAN do APP truyền xuống, không dùng CURRENT_TIMESTAMP.
-     * CURRENT_TIMESTAMP là đồng hồ của MySQL — container chạy UTC trong khi
-     * app chạy +07, nên cùng một dòng sẽ có expire_at và updated_at lệch nhau
-     * 7 tiếng. Cả hệ thống phải xem giờ trên CÙNG MỘT đồng hồ.
+     * The TIMESTAMP is passed in by the APP; CURRENT_TIMESTAMP is not used.
+     * CURRENT_TIMESTAMP is MySQL's clock — the container runs in UTC while the
+     * app runs in +07, so the same row would have expire_at and updated_at 7
+     * hours apart. The whole system must read time from ONE clock.
      */
     @Modifying
     @Query("UPDATE Hold h SET h.status = 2, h.updatedAt = :now " +
@@ -35,16 +36,17 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
     int markReleased(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
 
     /**
-     * Đổi lượt giữ chỗ thành đơn hàng.
+     * Turn a hold into an order.
      *
-     * Có THÊM điều kiện "AND h.expireAt > :now" mà markReleased không cần.
-     * Lý do: job quét mỗi 10 giây, nên có khoảng hở giữa lúc hold hết hạn và
-     * lúc job dọn tới — trong khoảng đó status vẫn là 0. Chỉ kiểm status thôi
-     * thì khách dùng được hold đã quá giờ.
+     * It has an EXTRA condition "AND h.expireAt > :now" that markReleased does
+     * not need. Reason: the job scans every 10 seconds, so there is a gap
+     * between the moment a hold expires and the moment the job cleans it up —
+     * during that gap status is still 0. Checking status alone would let a
+     * customer use an expired hold.
      *
-     * Kiểm thời gian phải nằm TRONG câu UPDATE, không phải if ở tầng trên:
-     * đọc rồi mới ghi là còn khe hở, gộp vào WHERE thì MySQL khoá dòng và
-     * kiểm trên giá trị mới nhất.
+     * The time check must be INSIDE the UPDATE, not an if in the layer above:
+     * read-then-write leaves a gap, while putting it in the WHERE makes MySQL
+     * lock the row and check against the latest value.
      */
     @Modifying
     @Query("UPDATE Hold h SET h.status = 1, h.updatedAt = :now " +
@@ -52,12 +54,12 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
     int markUsed(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
 
     /**
-     * Khoá dòng hold cho tới hết transaction, đồng thời xác nhận nó còn hạn.
+     * Lock the hold row until the transaction ends, and confirm it is still valid.
      *
-     * Không đổi trạng thái gì, chỉ chạm updatedAt — mục đích là cái KHOÁ DÒNG
-     * mà InnoDB đặt lên khi UPDATE. markUsed() cũng UPDATE đúng dòng này, nên
-     * "lưu hành khách" và "tạo đơn" chạy cùng lúc sẽ phải xếp hàng: đơn hàng
-     * không bao giờ đọc phải danh sách hành khách đang ghi dở.
+     * Changes no state, only touches updatedAt — the point is the ROW LOCK
+     * InnoDB takes on UPDATE. markUsed() also UPDATEs this same row, so
+     * "save passengers" and "create order" running at the same time must
+     * queue: the order never reads a half-written passenger list.
      */
     @Modifying
     @Query("UPDATE Hold h SET h.updatedAt = :now " +
@@ -65,9 +67,9 @@ public interface HoldJPAMapper extends JpaRepository<Hold, Long> {
     int lockIfHolding(@Param("holdId") Long holdId, @Param("now") LocalDateTime now);
 
     /**
-     * Quét theo lô, không lấy hết một lần. Giờ cao điểm có thể hàng nghìn
-     * lượt hết hạn cùng lúc; ôm hết vào RAM rồi xử lý là một transaction dài,
-     * khoá nhiều dòng, chặn cả người đang mua.
+     * Scan in batches, never everything at once. At peak time thousands of
+     * holds can expire together; loading them all into memory makes one long
+     * transaction that locks many rows and blocks people who are buying.
      */
     @Query("SELECT h FROM Hold h WHERE h.status = 0 AND h.expireAt < :now ORDER BY h.expireAt ASC")
     List<Hold> findExpired(@Param("now") LocalDateTime now, Pageable pageable);

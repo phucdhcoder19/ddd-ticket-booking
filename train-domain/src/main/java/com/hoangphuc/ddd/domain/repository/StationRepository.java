@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface StationRepository {
 
-    /** Toàn bộ ga, đã sắp theo thứ tự trên tuyến Bắc – Nam. */
+    /** All stations, sorted in North–South route order. */
     List<Station> findAllOrdered();
 
     long count();

@@ -4,26 +4,26 @@ import lombok.Data;
 
 import java.util.List;
 
-/** Mot toa cua mot chuyen, kem so do cho. */
+/** One carriage of a trip, with its seat map. */
 @Data
 public class CarriageDTO {
 
     private String id;
 
-    /** Toa so may — khach doc con so nay tren ve. */
+    /** Carriage number — passengers read this on the ticket. */
     private int number;
 
     /** SOFT_SEAT | BERTH_4 | BERTH_6 */
     private String seatClass;
 
-    /** seat-2-2 | berth-4 | berth-6 — frontend dung de chon cach ve. */
+    /** seat-2-2 | berth-4 | berth-6 — the frontend uses it to pick how to draw. */
     private String layout;
 
-    /** Toa ngoi: so hang ghe. Toa nam: so khoang. */
+    /** Seating carriage: number of seat rows. Sleeper carriage: number of compartments. */
     private int rows;
 
     private List<SeatDTO> seats;
 
-    /** Con bao nhieu cho trong — de tab chon toa hien ngay, khoi dem lai. */
+    /** How many places are free — lets the carriage tabs show it without recounting. */
     private int available;
 }

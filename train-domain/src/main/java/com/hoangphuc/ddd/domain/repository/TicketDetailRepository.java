@@ -11,13 +11,13 @@ public interface TicketDetailRepository {
 
     int getStockAvailable(Long ticketId);
 
-    /** Ve dang ban gan nhat CHUA toi gio mo. */
+    /** The nearest active ticket whose sale has NOT opened yet. */
     Optional<TicketDetail> findNextOpening(LocalDateTime now);
 
-    /** Ve dang ban co gio mo gan day nhat (chua chac con trong khung ban). */
+    /** The active ticket that opened most recently (it may already be past its sale window). */
     Optional<TicketDetail> findLatestOpened(LocalDateTime now);
 
-    /** Tuyến phòng thủ 1: chỉ trừ khi còn đủ vé. Trả về true nếu trừ được. */
+    /** First line of defence: only deduct when there is enough stock. Returns true if deducted. */
     boolean decreaseStock(Long ticketId, int quantity);
 
     boolean increaseStock(Long ticketId, int quantity);

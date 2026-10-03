@@ -5,32 +5,34 @@ import { cn } from "@/lib/cn";
 import { Skeleton } from "./ui/StateView";
 
 /**
- * Sơ đồ toa tàu.
+ * Carriage seat map.
  *
- * Bốn quyết định thiết kế chính:
+ * Four key design decisions:
  *
- * 1. KHÔNG CHỈ DÙNG MÀU để phân biệt trạng thái. Mỗi trạng thái có thêm ký hiệu
- *    riêng (✓ đang chọn, ✕ đã bán, ⏳ người khác giữ) và viền khác nhau, để
- *    người mù màu — khoảng 8% nam giới — vẫn dùng được.
+ * 1. NOT COLOUR ALONE to tell states apart. Each state also has its own mark
+ *    (✓ selected, ✕ sold, ⏳ held by someone else) and a different border, so
+ *    colour-blind people — about 8% of men — can still use it.
  *
- * 2. Ghế là <button> thật, không phải <div onClick>. Nhờ đó Tab/Enter/Space
- *    hoạt động sẵn, và mỗi ghế có aria-label đầy đủ: "Chỗ 12, tầng 1, 1.250.000 ₫, còn trống".
+ * 2. Seats are real <button>s, not <div onClick>. So Tab/Enter/Space work out
+ *    of the box, and each seat has a full aria-label: "Seat 12, level 1, ₫1,250,000, available".
  *
- * 3. Ô ghế tối thiểu 44×44px kể cả trên màn hình nhỏ; toa dài thì cuộn ngang
- *    chứ không thu nhỏ ghế — bấm nhầm ghế khi mạng đang đông là rất tốn thời gian.
+ * 3. Seat cells are at least 44×44px even on small screens; long carriages
+ *    scroll sideways instead of shrinking seats — tapping the wrong seat while
+ *    the network is busy wastes a lot of time.
  *
- * 4. Ghế vừa bị người khác giật mất được đánh dấu riêng (justTakenSeatIds) và
- *    ghế gợi ý thay thế có vòng nhấp nháy, để mắt tìm thấy ngay.
+ * 4. Seats just snatched by someone else are marked separately
+ *    (justTakenSeatIds), and suggested replacements get a pulsing ring so the
+ *    eye finds them right away.
  */
 export type SeatMapProps = {
   carriage: Carriage;
   selectedSeatIds: string[];
   onToggleSeat: (seat: Seat) => void;
-  /** Số chỗ tối đa được chọn (= số hành khách) */
+  /** Max number of seats that can be selected (= number of passengers) */
   maxSelectable: number;
-  /** Ghế vừa bị mất trong lần giữ chỗ hỏng gần nhất */
+  /** Seats lost in the latest failed hold attempt */
   justTakenSeatIds?: string[];
-  /** Ghế hệ thống gợi ý thay thế */
+  /** Seats the system suggests instead */
   suggestedSeatIds?: string[];
 };
 
@@ -40,7 +42,7 @@ export function SeatMap({
   const isBerth = carriage.layout !== "seat-2-2";
   const gridRef = useRef<HTMLDivElement>(null);
 
-  // Nhóm ghế theo hàng (toa ngồi) hoặc theo khoang (toa nằm)
+  // Group seats by row (seating carriage) or by compartment (sleeper carriage)
   const groups = new Map<number, Seat[]>();
   for (const s of carriage.seats) {
     const key = s.row;
@@ -55,21 +57,21 @@ export function SeatMap({
         <div
           ref={gridRef}
           role="group"
-          aria-label={`Sơ đồ toa ${carriage.number}, còn ${carriage.available} chỗ trống`}
+          aria-label={`Map of carriage ${carriage.number}, ${carriage.available} seats available`}
           className="mx-auto w-fit rounded-3xl border-2 border-ink-300 bg-ink-50 p-3"
         >
-          {/* Đầu toa — giúp người dùng định hướng trước/sau toa */}
+          {/* Carriage ends — helps users tell the front from the back */}
           <div className="mb-2 flex items-center justify-between px-2 text-xs font-semibold text-ink-500">
-            <span aria-hidden>◄ Đầu tàu</span>
-            <span>Toa {carriage.number}</span>
-            <span aria-hidden>Cuối tàu ►</span>
+            <span aria-hidden>◄ Front of train</span>
+            <span>Carriage {carriage.number}</span>
+            <span aria-hidden>Rear of train ►</span>
           </div>
 
           <div className="flex flex-col gap-1.5">
             {[...groups.entries()].map(([rowKey, seats]) => (
               <div key={rowKey} className="flex items-center gap-2">
                 <span className="w-10 shrink-0 text-right text-xs font-medium text-ink-500" aria-hidden>
-                  {isBerth ? `Kh.${rowKey}` : `H.${rowKey}`}
+                  {isBerth ? `C.${rowKey}` : `R.${rowKey}`}
                 </span>
                 <div className={cn("flex gap-1.5", isBerth && "rounded-xl bg-white/70 p-1.5 ring-1 ring-ink-200")}>
                   {seats.map((seat, i) => (
@@ -84,7 +86,7 @@ export function SeatMap({
                         }
                         onToggle={onToggleSeat}
                       />
-                      {/* Lối đi: giữa hai cặp ghế (toa ngồi) hoặc giữa hai dãy giường */}
+                      {/* Aisle: between the two seat pairs (seating) or between the two berth stacks */}
                       {i === seats.length / 2 - 1 && (
                         <span aria-hidden className="mx-0.5 h-10 w-px bg-ink-300" />
                       )}
@@ -98,7 +100,7 @@ export function SeatMap({
       </div>
       {isBerth && (
         <p className="mt-2 text-center text-xs text-ink-500">
-          Mỗi khung là một khoang. Giường tầng 1 thuận tiện hơn nên giá cao hơn tầng 2 và 3.
+          Each frame is one compartment. Lower berths are more convenient, so they cost more than middle and upper ones.
         </p>
       )}
     </div>
@@ -119,16 +121,16 @@ function SeatButton({
   const disabled = unavailable || disabledByLimit;
 
   const statusText = selected
-    ? "bạn đang chọn"
+    ? "selected by you"
     : seat.status === "sold"
-      ? "đã bán"
+      ? "sold"
       : seat.status === "held"
         ? justTaken
-          ? "vừa bị hành khách khác giữ mất"
-          : "hành khách khác đang giữ"
+          ? "just taken by another passenger"
+          : "held by another passenger"
         : disabledByLimit
-          ? "còn trống, nhưng bạn đã chọn đủ số chỗ"
-          : "còn trống";
+          ? "available, but you have already picked enough seats"
+          : "available";
 
   const mark = selected ? "✓" : seat.status === "sold" ? "✕" : seat.status === "held" ? "⏳" : null;
 
@@ -138,28 +140,28 @@ function SeatButton({
       disabled={disabled}
       aria-pressed={selected}
       onClick={() => onToggle(seat)}
-      title={`Chỗ ${seat.label} — ${formatVnd(seat.price)}`}
+      title={`Seat ${seat.label} — ${formatVnd(seat.price)}`}
       aria-label={[
-        `Chỗ ${seat.label}`,
-        seat.berthLevel ? `tầng ${seat.berthLevel}` : null,
+        `Seat ${seat.label}`,
+        seat.berthLevel ? `level ${seat.berthLevel}` : null,
         formatVnd(seat.price),
         statusText,
       ].filter(Boolean).join(", ")}
       className={cn(
         "relative grid size-11 shrink-0 place-items-center rounded-lg border-2 text-sm font-bold transition-all",
-        // còn trống
+        // available
         !unavailable && !selected && !disabledByLimit &&
-          "border-ok-600/40 bg-white text-ink-900 hover:border-son-500 hover:bg-son-50 active:scale-95",
-        // đang chọn — đảo màu để nổi bật nhất trên sơ đồ
-        selected && "border-son-700 bg-son-600 text-white shadow-[var(--shadow-soft)]",
-        // người khác giữ
-        seat.status === "held" && !selected && "cursor-not-allowed border-mai-300 bg-mai-50 text-mai-700",
-        // đã bán
+          "border-ok-600/40 bg-white text-ink-900 hover:border-brand-500 hover:bg-brand-50 active:scale-95",
+        // selected — inverted colours so it stands out most on the map
+        selected && "border-brand-700 bg-brand-600 text-white shadow-[var(--shadow-soft)]",
+        // held by someone else
+        seat.status === "held" && !selected && "cursor-not-allowed border-accent-300 bg-accent-50 text-accent-700",
+        // sold
         seat.status === "sold" && "cursor-not-allowed border-ink-200 bg-ink-200 text-ink-500",
-        // trống nhưng đã chọn đủ số chỗ
+        // free, but enough seats are already picked
         !unavailable && disabledByLimit && !selected && "cursor-not-allowed border-ink-200 bg-white text-ink-400",
-        justTaken && "animate-pulse ring-3 ring-son-400",
-        suggested && "ring-3 ring-mai-400 ring-offset-1",
+        justTaken && "animate-pulse ring-3 ring-brand-400",
+        suggested && "ring-3 ring-accent-400 ring-offset-1",
       )}
     >
       <span className="leading-none">{seat.label}</span>
@@ -170,7 +172,7 @@ function SeatButton({
       )}
       {seat.berthLevel && (
         <span aria-hidden className="absolute bottom-0.5 text-[9px] font-medium opacity-70">
-          T{seat.berthLevel}
+          L{seat.berthLevel}
         </span>
       )}
     </button>
@@ -179,10 +181,10 @@ function SeatButton({
 
 export function SeatLegend() {
   const items = [
-    { cls: "border-ok-600/40 bg-white", mark: "", label: "Còn trống" },
-    { cls: "border-son-700 bg-son-600 text-white", mark: "✓", label: "Bạn đang chọn" },
-    { cls: "border-mai-300 bg-mai-50 text-mai-700", mark: "⏳", label: "Người khác đang giữ" },
-    { cls: "border-ink-200 bg-ink-200 text-ink-500", mark: "✕", label: "Đã bán" },
+    { cls: "border-ok-600/40 bg-white", mark: "", label: "Available" },
+    { cls: "border-brand-700 bg-brand-600 text-white", mark: "✓", label: "Your selection" },
+    { cls: "border-accent-300 bg-accent-50 text-accent-700", mark: "⏳", label: "Held by someone else" },
+    { cls: "border-ink-200 bg-ink-200 text-ink-500", mark: "✕", label: "Sold" },
   ];
   return (
     <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">

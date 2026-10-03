@@ -20,16 +20,17 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * BÀI 21 — NHẤT QUÁN DỮ LIỆU.
+ * LESSON 21 — DATA CONSISTENCY.
  *
- * "Trừ kho MySQL" và "tạo đơn" nằm trong CÙNG 1 transaction:
- *   - cả hai thành công  -> COMMIT
- *   - bất kỳ cái nào lỗi -> ROLLBACK cả hai, kho tự quay về số cũ
+ * "Deduct MySQL stock" and "create the order" live in the SAME transaction:
+ *   - both succeed     -> COMMIT
+ *   - either one fails -> ROLLBACK both, stock goes back to its old value
  *
- * Tách thành class riêng vì 2 lý do:
- *   1. @Transactional chỉ chạy khi được gọi TỪ BÊN NGOÀI class (qua proxy của Spring).
- *   2. Method này KHÔNG được try/catch nuốt exception — nuốt thì Spring tưởng
- *      mọi thứ ổn và COMMIT. Việc bắt lỗi + hoàn Redis để tầng gọi nó lo.
+ * A separate class for 2 reasons:
+ *   1. @Transactional only works when called FROM OUTSIDE the class (through the Spring proxy).
+ *   2. These methods must NOT swallow exceptions with try/catch — if they do,
+ *      Spring thinks everything is fine and COMMITs. Catching errors and
+ *      restoring Redis is the caller's job.
  */
 @Service
 @Slf4j
@@ -42,29 +43,29 @@ public class OrderTransactionService {
     private final HoldPassengerRepository holdPassengerRepository;
     private final SeatRepository seatRepository;
 
-    /** Bật true trong application.yml để cố tình gây lỗi SAU khi trừ kho -> xem rollback. */
+    /** Set to true in application.yml to deliberately fail AFTER deducting stock -> watch the rollback. */
     @Value("${app.demo.fail-after-deduct:false}")
     private boolean failAfterDeduct;
 
     /**
-     * @return đơn vừa tạo, hoặc null nếu MySQL báo không đủ vé
-     * @throws RuntimeException nếu có lỗi — transaction đã ROLLBACK
+     * @return the order just created, or null if MySQL says there is not enough stock
+     * @throws RuntimeException on error — the transaction has been ROLLED BACK
      */
     @Transactional(rollbackFor = Exception.class)
     public TicketOrder deductStockAndCreateOrder(Long ticketId, Long userId,
                                                  int quantity, BigDecimal unitPrice) {
-        // ① Trừ kho MySQL (Cách 1). Chưa thật sự ghi — đang "treo" trong transaction.
+        // ① Deduct MySQL stock (option 1). Not really written yet — "pending" inside the transaction.
         boolean deducted = ticketDetailDomainService.decreaseStock(ticketId, quantity);
         if (!deducted) {
-            return null;    // chưa ghi gì -> không có gì để rollback
+            return null;    // nothing written -> nothing to roll back
         }
 
         if (failAfterDeduct) {
-            log.warn("[TX] DEMO: co tinh nem loi SAU khi tru kho, ticketId={}", ticketId);
-            throw new IllegalStateException("DEMO rollback: loi gia lap sau khi tru kho");
+            log.warn("[TX] DEMO: throwing on purpose AFTER deducting stock, ticketId={}", ticketId);
+            throw new IllegalStateException("DEMO rollback: simulated error after stock deduction");
         }
 
-        // ② Tạo đơn — cùng transaction với ①
+        // ② Create the order — same transaction as ①
         LocalDateTime now = LocalDateTime.now();
         TicketOrder order = new TicketOrder()
                 .setOrderNumber(generateOrderNumber())
@@ -78,31 +79,32 @@ public class OrderTransactionService {
                 .setUpdatedAt(now);
 
         TicketOrder saved = ticketOrderRepository.save(order);
-        log.info("[TX] tru kho + tao don OK | orderNumber={}", saved.getOrderNumber());
+        log.info("[TX] stock deducted + order created | orderNumber={}", saved.getOrderNumber());
         return saved;
-        // return bình thường -> Spring COMMIT cả ① và ②
+        // normal return -> Spring COMMITs both ① and ②
     }
 
     /**
-     * BÀI 18 — BƯỚC CUỐI: đổi lượt giữ chỗ thành đơn hàng.
+     * LESSON 18 — FINAL STEP: turn a hold into an order.
      *
-     * KHÔNG GIÀNH LẠI GHẾ ở đây. Ghế đã bị chiếm từ lúc POST /holds rồi.
-     * Bước này chỉ chuyển quyền sở hữu mấy chỗ đó từ "đang giữ tạm" sang
-     * "đã bán" — chuyển trạng thái, không phải chiếm thêm.
+     * NO SEATS ARE CLAIMED AGAIN here. They were taken back at POST /holds.
+     * This step only moves ownership of those seats from "temporarily held"
+     * to "sold" — a state change, not another claim.
      *
-     * markUsed() có WHERE status = 0 AND expireAt > now. Nó là cuộc đua giữa
-     * khách bấm xác nhận ở giây 599 và job quét ở giây 600:
-     *   - khách thắng -> job thấy 0 dòng, không trả ghế, khách giữ vé
-     *   - job thắng   -> ở đây nhận 0 dòng, KHÔNG tạo đơn, tầng trên báo hết giờ
+     * markUsed() has WHERE status = 0 AND expireAt > now. It is the race
+     * between a customer confirming at second 599 and the job scanning at 600:
+     *   - customer wins -> the job sees 0 rows, frees nothing, customer keeps the seats
+     *   - job wins      -> we get 0 rows here, NO order is created, the caller reports expiry
      *
-     * Thiếu mệnh đề đó thì tệ nhất: khách trả tiền xong, ghế vẫn được trả về
-     * kho bán cho người thứ hai. Một chỗ, hai người cầm vé.
+     * Without that clause comes the worst case: the customer pays, and the
+     * seats still go back to stock and get sold to someone else. One seat,
+     * two people holding tickets.
      *
-     * Câu cuối kiểm sold == seatCount là một cái chốt an toàn, không phải
-     * thừa: nếu vì lý do nào đó một ghế đã rời khỏi lượt giữ này, đơn hàng
-     * sẽ thu tiền nhiều hơn số chỗ thật sự giao được. Thà rollback.
+     * The final sold == seatCount check is a safety latch, not redundancy: if
+     * for some reason a seat has left this hold, the order would charge for
+     * more seats than it can deliver. Better to roll back.
      *
-     * @return đơn vừa tạo, hoặc null nếu lượt giữ chỗ đã hết hạn / đã dùng
+     * @return the order just created, or null if the hold has expired / was already used
      */
     @Transactional(rollbackFor = Exception.class)
     public TicketOrder convertSeatHoldToOrder(Hold hold) {
@@ -110,18 +112,18 @@ public class OrderTransactionService {
 
         int changed = holdRepository.markUsed(hold.getId(), now);
         if (changed == 0) {
-            log.info("[TX] hold khong con dung duoc | holdCode={}", hold.getHoldCode());
+            log.info("[TX] hold can no longer be used | holdCode={}", hold.getHoldCode());
             return null;
         }
 
-        // Đọc hành khách SAU markUsed(): lúc này mình đang giữ khoá dòng
-        // hold, nên một lần PUT /passengers đang chạy dở hoặc đã xong hẳn,
-        // hoặc phải đợi mình xong — không bao giờ đọc phải danh sách ghi dở.
+        // Read the passengers AFTER markUsed(): we now hold the row lock on the
+        // hold, so a PUT /passengers is either fully done or has to wait for us
+        // — we never read a half-written list.
         List<HoldPassenger> passengers = holdPassengerRepository.findByHold(hold.getId());
         if (passengers.size() != hold.getSeatCount()) {
             throw new PassengersMissingException(
-                    "Hold " + hold.getHoldCode() + " co " + hold.getSeatCount()
-                            + " cho nhung moi co " + passengers.size() + " hanh khach");
+                    "Hold " + hold.getHoldCode() + " has " + hold.getSeatCount()
+                            + " seats but only " + passengers.size() + " passengers");
         }
         long payable = 0L;
         for (HoldPassenger p : passengers) {
@@ -135,13 +137,13 @@ public class OrderTransactionService {
                 .setFromCode(hold.getFromCode())
                 .setToCode(hold.getToCode())
                 .setQuantity(hold.getSeatCount())
-                // Cộng giá ĐÃ CHỐT của từng hành khách, KHÔNG tính lại: giá
-                // ghế chốt lúc giữ chỗ, giảm giá chốt lúc nhập thông tin.
-                // Tính lại ở đây là mở cửa cho chuyện khách thấy một giá
-                // trên màn hình và bị trừ một giá khác lúc trả tiền.
+                // Sum each passenger's FIXED price, NO recomputation: the seat
+                // fare was fixed at hold time, the discount when details were
+                // entered. Recomputing here opens the door to the customer
+                // seeing one price on screen and being charged another.
                 .setTotalAmount(BigDecimal.valueOf(payable))
-                // Chua co cong thanh toan that, nen xac nhan la coi nhu da tra tien.
-                // Bai 25 se chen buoc thanh toan vao giua: hold -> payment -> order.
+                // No real payment gateway yet, so confirming counts as paid.
+                // Lesson 25 inserts a payment step in between: hold -> payment -> order.
                 .setOrderStatus(TicketOrder.STATUS_PAID)
                 .setPaidAt(now)
                 .setCreatedAt(now)
@@ -150,12 +152,12 @@ public class OrderTransactionService {
         int sold = seatRepository.sellByHold(hold.getId(), order.getId());
         if (sold != hold.getSeatCount()) {
             throw new IllegalStateException(
-                    "Don " + order.getOrderNumber() + " can " + hold.getSeatCount()
-                            + " cho nhung chi ban duoc " + sold);
+                    "Order " + order.getOrderNumber() + " needs " + hold.getSeatCount()
+                            + " seats but only " + sold + " could be sold");
         }
         holdPassengerRepository.attachToOrder(hold.getId(), order.getId());
 
-        log.info("[TX] hold -> don hang OK | holdCode={} orderNumber={} so cho={}",
+        log.info("[TX] hold -> order OK | holdCode={} orderNumber={} seats={}",
                 hold.getHoldCode(), order.getOrderNumber(), sold);
         return order;
     }

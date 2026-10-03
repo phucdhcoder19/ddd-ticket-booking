@@ -11,7 +11,7 @@ import { PaymentPage } from "@/pages/PaymentPage";
 import { MyTicketsPage } from "@/pages/MyTicketsPage";
 import { OfflineBanner } from "@/components/OfflineBanner";
 
-/** Đường dẫn tiếng Việt, dễ đọc và dễ chia sẻ cho nhau qua tin nhắn */
+/** Readable paths that are easy to share with each other in a message */
 export default function App() {
   return (
     <BrowserRouter>
@@ -21,12 +21,12 @@ export default function App() {
           <Routes>
             <Route element={<AppLayout />}>
               <Route index element={<HomePage />} />
-              <Route path="phong-cho" element={<WaitingRoomPage />} />
-              <Route path="chuyen-tau" element={<TripListPage />} />
-              <Route path="chon-cho/:tripId" element={<SeatSelectionPage />} />
-              <Route path="thong-tin-hanh-khach" element={<PassengerInfoPage />} />
-              <Route path="thanh-toan" element={<PaymentPage />} />
-              <Route path="ve-cua-toi" element={<MyTicketsPage />} />
+              <Route path="waiting-room" element={<WaitingRoomPage />} />
+              <Route path="trips" element={<TripListPage />} />
+              <Route path="seats/:tripId" element={<SeatSelectionPage />} />
+              <Route path="passengers" element={<PassengerInfoPage />} />
+              <Route path="payment" element={<PaymentPage />} />
+              <Route path="my-tickets" element={<MyTicketsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

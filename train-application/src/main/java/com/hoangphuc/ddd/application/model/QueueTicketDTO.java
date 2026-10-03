@@ -4,14 +4,14 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/** Mot luot xep hang vao mua ve. */
+/** One place in the queue to get in and buy tickets. */
 @Data
 public class QueueTicketDTO {
 
-    /** Ma luot, client giu trong sessionStorage de hoi lai trang thai. */
+    /** Queue token, kept by the client in sessionStorage to ask for its status again. */
     private String token;
 
-    /** Con bao nhieu nguoi dung truoc. 0 = toi luot. */
+    /** How many people are ahead. 0 = your turn. */
     private int position;
 
     private int total;
@@ -21,6 +21,6 @@ public class QueueTicketDTO {
     /** WAITING | ADMITTED */
     private String status;
 
-    /** Duoc goi roi thi co bao lau de vao mua. NULL khi con dang cho. */
+    /** Once admitted, how long there is to buy. NULL while still waiting. */
     private LocalDateTime admissionExpiresAt;
 }

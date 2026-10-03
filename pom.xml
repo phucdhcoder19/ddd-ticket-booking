@@ -67,9 +67,9 @@
                 <version>3.15.0</version>
                 <configuration>
                     <!--
-                      TU JDK 23, javac KHONG con tu dong chay annotation processor
-                      tim thay tren classpath. Phai khai bao ro o day,
-                      neu khong Lombok se khong sinh constructor/getter/setter.
+                      SINCE JDK 23, javac NO LONGER runs annotation processors
+                      found on the classpath automatically. They must be declared
+                      here, otherwise Lombok generates no constructors/getters/setters.
                     -->
                     <annotationProcessorPaths>
                         <path>

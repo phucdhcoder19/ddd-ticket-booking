@@ -10,8 +10,8 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Bản cài đặt bằng Redisson. Đây là NƠI DUY NHẤT trong project
- * import org.redisson.* — mọi chỗ khác chỉ biết DistributedLocker.
+ * Redisson implementation. This is the ONLY place in the project that
+ * imports org.redisson.* — everything else only knows DistributedLocker.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,9 +32,9 @@ public class RedissonDistributedLockService implements DistributedLockService {
 
             @Override
             public void unlock() {
-                // CHỈ nhả khi chính thread này đang giữ.
-                // Thiếu kiểm tra này, thread A có thể nhả nhầm khoá của thread B
-                // (khi khoá của A đã hết leaseTime và B vừa giành được).
+                // ONLY release when the current thread holds it.
+                // Without this check, thread A could release thread B's lock
+                // (when A's lease has expired and B has just acquired it).
                 if (rLock.isHeldByCurrentThread()) {
                     rLock.unlock();
                 }

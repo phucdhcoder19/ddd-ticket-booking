@@ -28,7 +28,7 @@ public class RedisInfrasServiceImpl implements RedisInfrasService {
 
     @Override
     public void setObject(String key, Object value, Duration ttl) {
-        if (!StringUtils.hasLength(key) || value == null) {   // chú ý dấu "!"
+        if (!StringUtils.hasLength(key) || value == null) {   // note the "!"
             return;
         }
         try {
@@ -55,7 +55,7 @@ public class RedisInfrasServiceImpl implements RedisInfrasService {
             return targetClass.cast(result);
         }
         try {
-            // Jackson trả LinkedHashMap khi deserialize về Object → convert sang class đích
+            // Jackson returns a LinkedHashMap when deserializing to Object → convert to the target class
             return MAPPER.convertValue(result, targetClass);
         } catch (IllegalArgumentException e) {
             log.error("getObject convert error: key={} target={}", key, targetClass.getSimpleName(), e);
@@ -72,7 +72,7 @@ public class RedisInfrasServiceImpl implements RedisInfrasService {
     public int getInt(String key) {
         Object value = redisTemplate.opsForValue().get(key);
         if (value == null) {
-            return -1;                      // cache miss — KHÔNG được để NPE
+            return -1;                      // cache miss — must NOT throw an NPE
         }
         return value instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(value));
     }

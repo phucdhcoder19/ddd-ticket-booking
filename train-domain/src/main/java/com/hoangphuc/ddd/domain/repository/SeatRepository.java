@@ -7,39 +7,39 @@ import java.util.List;
 
 public interface SeatRepository {
 
-    /** Ghi ca lo ghe khi sinh chuyen moi. */
+    /** Save a whole batch of seats when a new trip is provisioned. */
     List<Seat> saveAll(List<Seat> seats);
 
     long countByTrip(Long tripId);
 
-    /** Dem ghe con trong theo tung hang cho — nuoi man hinh tim chuyen. */
+    /** Count free seats per seat class — feeds the trip search screen. */
     List<Object[]> countFreeByClass(Long tripId);
 
-    /** So do ghe cua mot toa. */
+    /** Seat map of one carriage. */
     List<Seat> findByTripAndCarriage(Long tripId, int carriageNumber);
 
     List<Seat> findByTripAndClass(Long tripId, String seatClass);
 
     List<Seat> findByTripAndCodes(Long tripId, Collection<String> seatCodes);
 
-    /** Nhung ghe mot luot giu cho dang chiem. */
+    /** Seats currently occupied by a hold. */
     List<Seat> findByHold(Long holdId);
 
-    /** Nhung ghe mot don hang da mua. */
+    /** Seats bought by an order. */
     List<Seat> findByOrder(Long orderId);
 
     /**
-     * GIANH GHE cho mot luot giu cho.
+     * CLAIM SEATS for a hold.
      *
-     * Tra ve SO GHE giu duoc. Tang tren so voi so ghe da xin: thieu mot ghe
-     * cung la that bai, vi khach chon 3 cho ngoi canh nhau chu khong phai
-     * "3 cho bat ky".
+     * Returns the NUMBER OF SEATS claimed. The caller compares it with the
+     * number requested: missing even one seat is a failure, because the
+     * passenger picked 3 seats next to each other, not "any 3 seats".
      */
     int claimForHold(Long tripId, Collection<String> seatCodes, Long holdId);
 
-    /** Tra ghe ve kho khi huy hoac het gio. */
+    /** Return seats to stock when a hold is cancelled or expires. */
     int releaseByHold(Long holdId);
 
-    /** Doi ghe tu "dang giu" sang "da ban" va gan vao don. */
+    /** Move seats from "held" to "sold" and attach them to the order. */
     int sellByHold(Long holdId, Long orderId);
 }

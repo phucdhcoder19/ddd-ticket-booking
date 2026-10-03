@@ -8,17 +8,19 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Một lượt chạy cụ thể: đoàn tàu nào, ngày nào.
+ * One specific run: which train, which date.
  *
- * SINH LƯỜI (lazy): chuyến chỉ được tạo khi có người đầu tiên tìm tới ngày đó.
+ * LAZILY PROVISIONED: a trip is only created when the first person searches
+ * for that date.
  *
- * Vì sao không sinh sẵn 60 ngày: mỗi chuyến kéo theo ~600 ghế.
- *   7 tàu × 60 ngày × 600 ghế = 252.000 dòng
- * Trong khi đa số ngày chẳng ai tìm. Sinh lười thì chỉ trả tiền cho ngày
- * thật sự có khách.
+ * Why not pre-generate 60 days: each trip brings ~600 seats.
+ *   7 trains × 60 days × 600 seats = 252,000 rows
+ * while most days nobody searches. Lazy provisioning only pays for days that
+ * actually have customers.
  *
- * Đổi lại: người đầu tiên tìm phải chờ lâu hơn, và 5000 người cùng tìm một
- * lúc thì phải chặn không cho 5000 lượt cùng sinh — xem TripProvisionService.
+ * The trade-off: the first searcher waits longer, and when 5,000 people search
+ * at once we must stop 5,000 provisioning runs from starting — see
+ * TripProvisionService.
  */
 @Data
 @Accessors(chain = true)
@@ -30,7 +32,7 @@ import java.time.LocalDateTime;
 )
 public class Trip {
 
-    public static final int STATUS_READY = 1;   // đã sinh đủ ghế, bán được
+    public static final int STATUS_READY = 1;   // all seats generated, ready to sell
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,7 +41,7 @@ public class Trip {
     @Column(nullable = false)
     private Long trainId;
 
-    /** Ngày tàu chạy (giờ khởi hành lấy từ Train). */
+    /** Service date (the departure time comes from Train). */
     @Column(nullable = false)
     private LocalDate serviceDate;
 

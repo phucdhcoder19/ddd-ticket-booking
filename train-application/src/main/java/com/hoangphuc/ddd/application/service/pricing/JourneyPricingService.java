@@ -15,12 +15,12 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Dựng Journey từ (ga đi, ga đến, ngày) rồi tính giá.
+ * Builds a Journey from (departure station, arrival station, date) and prices it.
  *
- * FarePolicy là luật thuần — cho nó cây số, nó trả tiền. Nhưng "cây số" và
- * "hệ số cao điểm" phải đi tra cơ sở dữ liệu và đọc cấu hình, mà luật thuần
- * thì không được phép làm hai việc đó. Class này là phần bẩn nằm giữa: nó
- * biết chỗ tra, FarePolicy biết cách tính.
+ * FarePolicy is a pure rule — give it kilometres, it gives back money. But
+ * "kilometres" and "peak factor" require a database lookup and reading the
+ * config, which a pure rule must not do. This class is the impure part in
+ * between: it knows where to look things up, FarePolicy knows how to compute.
  */
 @Service
 @Slf4j
@@ -39,7 +39,7 @@ public class JourneyPricingService {
     private double peakSurcharge;
 
     /**
-     * @return rỗng nếu mã ga không có thật, hoặc đi và đến trùng nhau
+     * @return empty if a station code does not exist, or departure equals arrival
      */
     public Optional<Journey> resolve(String fromCode, String toCode, LocalDate date) {
         if (fromCode == null || toCode == null || fromCode.equals(toCode)) {
@@ -51,28 +51,29 @@ public class JourneyPricingService {
         if (from == null || to == null) {
             return Optional.empty();
         }
-        // Trị tuyệt đối: đi vào Nam hay ra Bắc thì quãng đường vẫn thế.
+        // Absolute value: southbound or northbound, the distance is the same.
         int distanceKm = Math.abs(to.getKmFromHanoi() - from.getKmFromHanoi());
         return Optional.of(new Journey(from, to, distanceKm, surchargeFor(date)));
     }
 
-    /** Giá đúng của MỘT chỗ cụ thể — tầng giường đã nằm sẵn trong ghế. */
+    /** The exact price of ONE specific seat — the berth level is already on the seat. */
     public long fareOf(Journey journey, Seat seat) {
         return FarePolicy.fare(journey.distanceKm(), seat.getSeatClass(),
                 seat.getBerthLevel(), journey.surcharge());
     }
 
-    /** Giá của một hạng chỗ ở một tầng giường bất kỳ — dùng cho giá "từ ...đ". */
+    /** Price of a seat class at a given berth level — used for "from ... VND" prices. */
     public long fareOf(Journey journey, String seatClass, int berthLevel) {
         return FarePolicy.fare(journey.distanceKm(), seatClass, berthLevel, journey.surcharge());
     }
 
     /**
-     * Phụ thu cao điểm Tết.
+     * Lunar New Year peak surcharge.
      *
-     * Lấy từ cấu hình chứ không tính âm lịch: ngành đường sắt công bố khung
-     * ngày cao điểm bằng văn bản hành chính, không suy ra từ lịch. Và nhúng
-     * cả bộ chuyển đổi âm lịch vào backend chỉ để nhân một hệ số là không đáng.
+     * Read from config rather than computed from the lunar calendar: the
+     * railway publishes the peak dates in an official notice, they are not
+     * derived from the calendar. And embedding a lunar calendar converter in
+     * the backend just to multiply by one factor is not worth it.
      */
     private double surchargeFor(LocalDate date) {
         try {
@@ -81,7 +82,7 @@ public class JourneyPricingService {
             boolean inPeak = !date.isBefore(start) && !date.isAfter(end);
             return inPeak ? peakSurcharge : 1.0d;
         } catch (Exception e) {
-            log.warn("[GIA] khung ngay cao diem cau hinh sai, dung gia thuong", e);
+            log.warn("[PRICE] peak date range is misconfigured, using the normal fare", e);
             return 1.0d;
         }
     }

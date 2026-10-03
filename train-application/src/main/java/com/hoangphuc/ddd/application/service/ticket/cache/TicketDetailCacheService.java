@@ -13,26 +13,26 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
- * TUYẾN PHÒNG THỦ THỨ HAI — chặn request trước khi nó chạm MySQL.
+ * SECOND LINE OF DEFENCE — stops requests before they reach MySQL.
  *
- * Mẫu Cache-Aside + Redisson lock chống CACHE STAMPEDE:
- *   1. Hỏi cache
- *   2. Trống -> giành khoá; chỉ 1 thread được xuống MySQL
- *   3. Sau khi có khoá, HỎI CACHE LẦN NỮA (double-check)
- *   4. Nạp từ MySQL, ghi cache, nhả khoá
+ * Cache-Aside + a Redisson lock against CACHE STAMPEDE:
+ *   1. Ask the cache
+ *   2. Empty -> take the lock; only 1 thread may go down to MySQL
+ *   3. Once the lock is held, ASK THE CACHE AGAIN (double-check)
+ *   4. Load from MySQL, write the cache, release the lock
  */
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class TicketDetailCacheService {
 
-    /** Cache sống 10 phút rồi tự chết. KHÔNG BAO GIỜ cache vĩnh viễn. */
+    /** The cache lives 10 minutes and then expires. NEVER cache forever. */
     private static final Duration TTL = Duration.ofMinutes(10);
 
-    /** Chờ tối đa 1s để giành khoá. Quá thì bỏ cuộc, không xếp hàng vô tận. */
+    /** Wait at most 1s for the lock. Give up after that, never queue forever. */
     private static final long LOCK_WAIT_SECONDS = 1;
 
-    /** Giữ khoá tối đa 5s. Server chết giữa chừng thì Redis tự xoá khoá. */
+    /** Hold the lock at most 5s. If the server dies midway, Redis deletes the lock. */
     private static final long LOCK_LEASE_SECONDS = 5;
 
     private final RedisInfrasService redisInfrasService;
@@ -42,59 +42,59 @@ public class TicketDetailCacheService {
     public TicketDetail getTicketDetail(Long ticketId) {
         String key = genKey(ticketId);
 
-        // ---- BƯỚC 1: hỏi Redis ----
+        // ---- STEP 1: ask Redis ----
         TicketDetail cached = redisInfrasService.getObject(key, TicketDetail.class);
         if (cached != null) {
-            log.info("[CACHE] HIT  | key={} -> KHONG dung MySQL", key);
+            log.info("[CACHE] HIT  | key={} -> MySQL NOT touched", key);
             return cached;
         }
 
-        log.info("[CACHE] MISS | key={} -> can khoa de xuong MySQL", key);
+        log.info("[CACHE] MISS | key={} -> need the lock to go to MySQL", key);
 
-        // ---- BƯỚC 2: giành khoá ----
-        // Không có bước này: 5000 thread cùng thấy cache trống ở BƯỚC 1
-        // và cùng lao xuống MySQL -> cache stampede -> DB nghen.
+        // ---- STEP 2: take the lock ----
+        // Without this step: 5000 threads all see an empty cache in STEP 1
+        // and all rush to MySQL -> cache stampede -> the DB chokes.
         DistributedLocker locker = distributedLockService.getLock(genLockKey(ticketId));
         boolean locked = false;
         try {
             locked = locker.tryLock(LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS, TimeUnit.SECONDS);
 
             if (!locked) {
-                // Người khác đang nạp. Chờ 1s rồi mà vẫn chưa xong -> thử đọc cache lần cuối.
-                log.warn("[LOCK] khong gianh duoc khoa | key={} -> doc lai cache", key);
+                // Someone else is loading. Still not done after 1s -> read the cache one last time.
+                log.warn("[LOCK] could not acquire the lock | key={} -> reading cache again", key);
                 return redisInfrasService.getObject(key, TicketDetail.class);
             }
 
-            // ---- BƯỚC 3: DOUBLE-CHECK — bước quan trọng nhất ----
-            // Thread trước có thể đã nạp xong trong lúc mình đứng chờ.
-            // Thiếu bước này thì 5000 thread vẫn lần lượt xuống MySQL,
-            // chỉ khác là xếp hàng thay vì ùa cùng lúc.
+            // ---- STEP 3: DOUBLE-CHECK — the most important step ----
+            // The previous thread may have finished loading while we waited.
+            // Without this step the 5000 threads still go to MySQL one by one,
+            // the only difference being that they queue instead of rushing at once.
             cached = redisInfrasService.getObject(key, TicketDetail.class);
             if (cached != null) {
-                log.info("[CACHE] HIT sau khi cho khoa | key={} -> KHONG dung MySQL", key);
+                log.info("[CACHE] HIT after waiting for the lock | key={} -> MySQL NOT touched", key);
                 return cached;
             }
 
-            // ---- BƯỚC 4: chỉ MỘT thread tới được đây ----
-            log.info("[CACHE] nap tu MySQL | key={}", key);
+            // ---- STEP 4: only ONE thread gets here ----
+            log.info("[CACHE] loading from MySQL | key={}", key);
             TicketDetail fromDb = ticketDetailDomainService.getTicketDetailById(ticketId);
             if (fromDb == null) {
                 return null;
             }
 
             redisInfrasService.setObject(key, fromDb, TTL);
-            log.info("[CACHE] FILL | key={} ttl={}phut", key, TTL.toMinutes());
+            log.info("[CACHE] FILL | key={} ttl={}min", key, TTL.toMinutes());
             return fromDb;
 
         } catch (InterruptedException e) {
-            // Thread bị ngắt trong lúc chờ khoá -> khôi phục cờ ngắt rồi thoát
+            // The thread was interrupted while waiting for the lock -> restore the flag and exit
             Thread.currentThread().interrupt();
-            log.warn("[LOCK] bi ngat khi cho khoa | key={}", key);
+            log.warn("[LOCK] interrupted while waiting for the lock | key={}", key);
             return null;
 
         } finally {
-            // BẮT BUỘC nhả khoá trong finally — thiếu là khoá kẹt tới khi hết leaseTime,
-            // mọi request cho vé này đứng im 5 giây.
+            // The lock MUST be released in finally — otherwise it stays stuck until
+            // the lease runs out, and every request for this ticket stalls for 5 seconds.
             if (locked) {
                 locker.unlock();
             }
@@ -102,8 +102,8 @@ public class TicketDetailCacheService {
     }
 
     /**
-     * Xoá cache khi dữ liệu gốc đổi (mua vé, sửa vé...).
-     * Xoá chứ không cập nhật — đơn giản hơn và ít sai hơn.
+     * Drop the cache when the source data changes (purchase, ticket edit...).
+     * Delete rather than update — simpler and less error-prone.
      */
     public void evict(Long ticketId) {
         String key = genKey(ticketId);
@@ -115,7 +115,7 @@ public class TicketDetailCacheService {
         return "TICKET:DETAIL:" + ticketId;
     }
 
-    /** Khoá phải là key RIÊNG, không trùng key cache. */
+    /** The lock must use a SEPARATE key, not the cache key. */
     private String genLockKey(Long ticketId) {
         return "LOCK:TICKET:DETAIL:" + ticketId;
     }

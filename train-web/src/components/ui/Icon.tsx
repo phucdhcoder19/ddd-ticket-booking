@@ -1,16 +1,16 @@
 /**
- * Bộ icon nét vẽ, thay cho emoji.
+ * Line icon set, used instead of emoji.
  *
- * Emoji trông không chuyên nghiệp và quan trọng hơn: mỗi hệ điều hành vẽ
- * một kiểu — 🚆 trên Windows khác hẳn trên macOS, còn Android thì đổi cả
- * màu. Không kiểm soát được giao diện.
+ * Emoji look unprofessional and, more importantly, every operating system
+ * draws them differently — 🚆 on Windows looks nothing like on macOS, and
+ * Android even changes the colours. The look cannot be controlled.
  *
- * SVG nét vẽ thì: cùng một hình ở mọi máy, ăn theo màu chữ qua
- * currentColor, và nét mảnh 1.6 hợp với chữ hơn khối màu đặc của emoji.
+ * Line SVGs look the same on every device, follow the text colour via
+ * currentColor, and a thin 1.6 stroke fits text better than solid emoji.
  */
 
 type IconProps = {
-  /** Kích thước cạnh, px. Mặc định 22 — vừa với chữ 15-16px. */
+  /** Side length in px. Default 22 — matches 15-16px text. */
   size?: number;
   className?: string;
 };
@@ -87,7 +87,7 @@ export function IconTicket({ size = 22, className }: IconProps) {
   );
 }
 
-/** Lưới chấm — nút "Khác" */
+/** Dot grid — the "More" button */
 export function IconGrid({ size = 22, className }: IconProps) {
   return (
     <svg {...base(size, className)} strokeWidth={2}>

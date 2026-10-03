@@ -5,18 +5,19 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 /**
- * Một chỗ ngồi/nằm của MỘT chuyến cụ thể.
+ * One seat or berth on ONE specific trip.
  *
- * Đây là đơn vị tồn kho thật của nghiệp vụ tàu. Con số "còn 997 vé" chỉ là
- * tổng hợp đếm được từ bảng này, không phải nguồn sự thật.
+ * This is the real unit of stock for the train business. "997 tickets left"
+ * is only a count derived from this table, not the source of truth.
  *
- * Vì sao ghế phải gắn với chuyến chứ không gắn với toa: ghế 12 toa 3 của
- * chuyến ngày 27 Tết đã bán, của ngày 28 thì chưa. Trạng thái khác nhau
- * theo ngày, nên phải có một dòng cho mỗi (chuyến, ghế).
+ * Why seats belong to a trip and not to a carriage: seat 12 in carriage 3 may
+ * be sold on the trip of the 27th but still free on the 28th. The state
+ * differs per day, so there must be one row per (trip, seat).
  *
- * KHÔNG lưu giá ở đây. Giá phụ thuộc quãng đường khách đi (Hà Nội → Huế
- * khác Hà Nội → Sài Gòn), mà quãng đường chỉ biết được lúc khách tìm chuyến.
- * Lưu giá vào ghế là lưu một con số chỉ đúng cho một cặp ga.
+ * The price is NOT stored here. It depends on how far the passenger travels
+ * (Hanoi → Hue differs from Hanoi → Saigon), and the distance is only known
+ * when the passenger searches. A stored price would only be right for one
+ * station pair.
  */
 @Data
 @Accessors(chain = true)
@@ -25,11 +26,11 @@ import lombok.experimental.Accessors;
     name = "seat",
     uniqueConstraints = @UniqueConstraint(name = "uk_seat_trip_code", columnNames = {"tripId", "seatCode"}),
     indexes = {
-        // Câu hỏi nóng nhất: "toa này của chuyến này còn ghế nào trống?"
+        // The hottest question: "which seats in this class of this trip are free?"
         @Index(name = "idx_seat_trip_class_status", columnList = "tripId,seatClass,status"),
-        // Job thu hồi: "ghế nào đang bị hold này giữ?"
+        // Release job: "which seats does this hold own?"
         @Index(name = "idx_seat_hold", columnList = "holdId"),
-        // In vé: "đơn này gồm những ghế nào?"
+        // Ticket printing: "which seats belong to this order?"
         @Index(name = "idx_seat_order", columnList = "orderId")
     }
 )
@@ -46,7 +47,7 @@ public class Seat {
     @Column(nullable = false)
     private Long tripId;
 
-    /** Mã hiển thị cho khách và cho frontend: "C3-12" = toa 3, chỗ 12. */
+    /** Code shown to passengers and the frontend: "C3-12" = carriage 3, seat 12. */
     @Column(nullable = false, length = 16)
     private String seatCode;
 
@@ -55,31 +56,32 @@ public class Seat {
     @Column(nullable = false, length = 16)
     private String seatClass;
 
-    /** Số hiệu chỗ trong toa, in trên vé: "12". */
+    /** Seat number within the carriage, printed on the ticket: "12". */
     @Column(nullable = false, length = 8)
     private String label;
 
     private int rowNo;
     private int colNo;
 
-    /** Toa nằm: số khoang (1..n). Toa ngồi: 0. */
+    /** Sleeper carriage: compartment number (1..n). Seating carriage: 0. */
     private int compartment;
 
-    /** Tầng giường: 1 (thấp, đắt nhất) .. 3. Toa ngồi: 0. */
+    /** Berth level: 1 (lowest, most expensive) .. 3. Seating carriage: 0. */
     private int berthLevel;
 
     @Column(nullable = false)
     private int status;
 
-    /** Lượt giữ chỗ đang chiếm ghế này. NULL khi ghế trống hoặc đã bán. */
+    /** The hold currently occupying this seat. NULL when the seat is free or sold. */
     private Long holdId;
 
     /**
-     * Đơn hàng đã mua ghế này. NULL khi ghế chưa bán.
+     * The order that bought this seat. NULL while unsold.
      *
-     * Vì sao ghế phải nhớ đơn chứ không chỉ nhớ "đã bán": in vé cần biết chỗ
-     * này thuộc đơn nào, và hoàn vé cần trả đúng chỗ đó về kho. Chỉ có
-     * status = 2 thì biết ghế đã bán nhưng không biết bán cho ai.
+     * Why the seat must remember its order and not just "sold": printing a
+     * ticket needs to know which order the seat belongs to, and a refund must
+     * return exactly that seat to stock. status = 2 alone says the seat is sold
+     * but not to whom.
      */
     private Long orderId;
 
@@ -87,7 +89,7 @@ public class Seat {
         return status == STATUS_FREE;
     }
 
-    /** Tên trạng thái đúng như kiểu SeatStatus của frontend. */
+    /** Status name exactly as the frontend SeatStatus type expects. */
     public String statusName() {
         return switch (status) {
             case STATUS_HELD -> "held";

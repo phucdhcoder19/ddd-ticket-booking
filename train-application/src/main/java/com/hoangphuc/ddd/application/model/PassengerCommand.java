@@ -3,9 +3,9 @@ package com.hoangphuc.ddd.application.model;
 import com.hoangphuc.ddd.domain.model.enums.PassengerDiscount;
 
 /**
- * Thong tin mot hanh khach, DA CHUAN HOA o controller: ten da gop khoang
- * trang, so dien thoai da ve dang 0xxxxxxxxx. Tang duoi khong phai lo dinh
- * dang nua, chi lo nghiep vu.
+ * One passenger's details, ALREADY NORMALISED by the controller: whitespace
+ * in the name collapsed, phone number in the 0xxxxxxxxx form. The layers
+ * below no longer worry about formatting, only about business rules.
  */
 public record PassengerCommand(
         String seatId,

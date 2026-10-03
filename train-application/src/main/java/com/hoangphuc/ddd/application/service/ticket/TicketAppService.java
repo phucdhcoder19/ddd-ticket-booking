@@ -4,13 +4,13 @@ import com.hoangphuc.ddd.application.model.PlaceOrderResult;
 import com.hoangphuc.ddd.application.model.TicketDetailDTO;
 
 /**
- * Use case của nghiệp vụ vé.
- * Tầng này trả lời "làm theo thứ tự nào", không trả lời "luật là gì".
+ * Use cases of the ticket business.
+ * This layer answers "in what order do things happen", not "what are the rules".
  */
 public interface TicketAppService {
 
     TicketDetailDTO getTicketDetail(Long ticketId);
 
-    /** Đặt vé: trừ kho + tạo đơn, nhất quán dữ liệu. */
+    /** Buy tickets: deduct stock + create the order, keeping data consistent. */
     PlaceOrderResult placeOrder(Long ticketId, Long userId, int quantity);
 }

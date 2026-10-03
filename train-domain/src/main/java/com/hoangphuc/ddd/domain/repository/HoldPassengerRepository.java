@@ -7,16 +7,17 @@ import java.util.List;
 public interface HoldPassengerRepository {
 
     /**
-     * Thay TOAN BO danh sach hanh khach cua mot luot giu cho.
+     * Replace the WHOLE passenger list of a hold.
      *
-     * Xoa het roi ghi lai, khong sua tung dong: PUT nghia la "day la trang
-     * thai cuoi cung", goi hai lan cung ket qua. Frontend tu thu lai khi
-     * mang cham, nen tinh chat do la bat buoc chu khong chi cho dep.
+     * Delete everything and write again instead of updating row by row: PUT
+     * means "this is the final state", so calling it twice gives the same
+     * result. The frontend retries automatically on slow networks, so that
+     * property is required, not just nice to have.
      */
     List<HoldPassenger> replaceForHold(Long holdId, List<HoldPassenger> passengers);
 
     List<HoldPassenger> findByHold(Long holdId);
 
-    /** Gan hanh khach cua luot giu cho vao don hang vua tao. */
+    /** Attach the passengers of a hold to the order that was just created. */
     int attachToOrder(Long holdId, Long orderId);
 }

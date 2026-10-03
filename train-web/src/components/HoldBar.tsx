@@ -6,11 +6,12 @@ import type { Hold } from "@/api/types";
 import { formatVnd } from "@/lib/format";
 
 /**
- * Thanh giữ chỗ dính trên đầu màn 5 và 6.
+ * Hold bar pinned to the top of screens 5 and 6.
  *
- * Đồng hồ phải LUÔN nhìn thấy trong suốt lúc nhập liệu, nên thanh này dính
- * (sticky) ngay dưới header. Nó cũng nhắc lại đang giữ chỗ nào — người dùng
- * nhập CCCD cho 3 người rất dễ quên mình đang ở toa nào, ghế nào.
+ * The timer must ALWAYS be visible while filling in details, so this bar is
+ * sticky right under the header. It also repeats which seats are held — a
+ * user typing ID numbers for 3 people easily forgets which carriage and seats
+ * they are on.
  */
 export function HoldBar({
   hold, total, onExpire,
@@ -20,12 +21,12 @@ export function HoldBar({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-ink-900">
-            Đang giữ {hold.items.length} chỗ
+            Holding {hold.items.length} {hold.items.length === 1 ? "seat" : "seats"}
           </p>
           <p className="truncate text-xs text-ink-600">
-            {hold.items.map((i) => `Toa ${i.carriageNumber} · chỗ ${i.seatLabel}`).join(" · ")}
+            {hold.items.map((i) => `Carriage ${i.carriageNumber} · seat ${i.seatLabel}`).join(" · ")}
           </p>
-          <p className="tnum text-xs font-semibold text-son-700">{formatVnd(total)}</p>
+          <p className="tnum text-xs font-semibold text-brand-700">{formatVnd(total)}</p>
         </div>
         <HoldCountdown expiresAt={hold.expiresAt} onExpire={onExpire} />
       </div>
@@ -34,11 +35,11 @@ export function HoldBar({
 }
 
 /**
- * Hộp thoại khi hết giờ giữ chỗ.
+ * Dialog shown when the hold expires.
  *
- * Không cho đóng bằng Esc hay bấm ra ngoài: người dùng bắt buộc phải chọn một
- * hướng đi tiếp, vì mọi dữ liệu đang nhập dở đã không còn giá trị. Giọng văn
- * nhận lỗi về phía hệ thống chứ không trách người dùng chậm.
+ * Cannot be closed with Esc or by clicking outside: the user must choose a
+ * way forward, because whatever was half-entered is no longer valid. The tone
+ * takes the blame on the system's side rather than blaming the user for being slow.
  */
 export function HoldExpiredDialog({ open, tripId }: { open: boolean; tripId?: string | null }) {
   const navigate = useNavigate();
@@ -47,17 +48,17 @@ export function HoldExpiredDialog({ open, tripId }: { open: boolean; tripId?: st
       open={open}
       onClose={() => {}}
       dismissible={false}
-      title="Đã hết thời gian giữ chỗ"
-      description="Sau 10 phút, chỗ được trả lại cho hành khách khác để ai cũng có cơ hội mua vé. Thông tin bạn vừa nhập vẫn được giữ tạm, bạn chỉ cần chọn lại chỗ."
+      title="Your hold has expired"
+      description="After 10 minutes, seats are released to other passengers so everyone gets a chance to buy. The details you entered are kept for now, you only need to pick your seats again."
       footer={
         <>
-          <Button variant="secondary" onClick={() => navigate("/chuyen-tau")}>
-            Xem chuyến khác
+          <Button variant="secondary" onClick={() => navigate("/trips")}>
+            See other trips
           </Button>
           <Button
-            onClick={() => navigate(tripId ? `/chon-cho/${encodeURIComponent(tripId)}` : "/chuyen-tau")}
+            onClick={() => navigate(tripId ? `/seats/${encodeURIComponent(tripId)}` : "/trips")}
           >
-            Chọn lại chỗ trên chuyến này
+            Pick seats on this trip again
           </Button>
         </>
       }

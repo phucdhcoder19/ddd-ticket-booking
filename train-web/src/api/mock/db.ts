@@ -3,24 +3,24 @@ import { getDayInfo, peakSurcharge } from "@/lib/lunar";
 import { fromDateKey } from "@/lib/format";
 
 export const STATIONS: Station[] = [
-  { code: "HNO", name: "Hà Nội", region: "Bắc" },
-  { code: "NDI", name: "Nam Định", region: "Bắc" },
-  { code: "THA", name: "Thanh Hoá", region: "Bắc" },
-  { code: "VIN", name: "Vinh", region: "Trung" },
-  { code: "DHO", name: "Đồng Hới", region: "Trung" },
-  { code: "HUE", name: "Huế", region: "Trung" },
-  { code: "DNA", name: "Đà Nẵng", region: "Trung" },
-  { code: "QNG", name: "Quảng Ngãi", region: "Trung" },
-  { code: "DTH", name: "Diêu Trì (Quy Nhơn)", region: "Trung" },
-  { code: "TUY", name: "Tuy Hoà", region: "Trung" },
-  { code: "NTR", name: "Nha Trang", region: "Trung" },
-  { code: "THC", name: "Tháp Chàm (Phan Rang)", region: "Nam" },
-  { code: "BTH", name: "Bình Thuận (Phan Thiết)", region: "Nam" },
-  { code: "BHO", name: "Biên Hoà", region: "Nam" },
-  { code: "SGO", name: "Sài Gòn", region: "Nam" },
+  { code: "HNO", name: "Hanoi", region: "North" },
+  { code: "NDI", name: "Nam Dinh", region: "North" },
+  { code: "THA", name: "Thanh Hoa", region: "North" },
+  { code: "VIN", name: "Vinh", region: "Central" },
+  { code: "DHO", name: "Dong Hoi", region: "Central" },
+  { code: "HUE", name: "Hue", region: "Central" },
+  { code: "DNA", name: "Da Nang", region: "Central" },
+  { code: "QNG", name: "Quang Ngai", region: "Central" },
+  { code: "DTH", name: "Dieu Tri (Quy Nhon)", region: "Central" },
+  { code: "TUY", name: "Tuy Hoa", region: "Central" },
+  { code: "NTR", name: "Nha Trang", region: "Central" },
+  { code: "THC", name: "Thap Cham (Phan Rang)", region: "South" },
+  { code: "BTH", name: "Binh Thuan (Phan Thiet)", region: "South" },
+  { code: "BHO", name: "Bien Hoa", region: "South" },
+  { code: "SGO", name: "Saigon", region: "South" },
 ];
 
-/** Thứ tự ga trên trục Bắc – Nam, dùng để tính quãng đường và thời gian chạy */
+/** Station order on the North–South line, used to compute distance and travel time */
 const ORDER = STATIONS.map((s) => s.code);
 const KM: Record<string, number> = {
   HNO: 0, NDI: 87, THA: 175, VIN: 319, DHO: 522, HUE: 688, DNA: 791,
@@ -43,7 +43,7 @@ const BASE_PRICE_PER_KM: Record<SeatClassCode, number> = {
   BERTH_4: 1180,
 };
 
-/** Hash ổn định để cùng một truy vấn luôn ra cùng dữ liệu (tránh nhảy số khi quay lại màn hình) */
+/** Stable hash so the same query always returns the same data (no jumping numbers when returning to a screen) */
 function hash(str: string): number {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -79,11 +79,11 @@ export function buildTrips(from: string, to: string, dateKey: string): Trip[] {
     const classes = t.classes.map((code) => {
       const c = code as SeatClassCode;
       const total = c === "SOFT_SEAT" ? 128 : c === "BERTH_6" ? 84 : 56;
-      // Cao điểm thì chỗ còn rất ít — đúng cảm giác mở bán vé Tết
+      // Very few seats left at peak time — just like a real Lunar New Year sale
       const scarcity = info.peak === "peak" ? 0.06 : info.peak === "high" ? 0.22 : 0.65;
       const noise = rand(seed + c, 100) / 100;
       let available = Math.round(total * scarcity * noise * 1.8);
-      if (rand(seed + c + "z", 10) === 0) available = 0; // thỉnh thoảng có hạng hết sạch
+      if (rand(seed + c + "z", 10) === 0) available = 0; // now and then a class is completely sold out
       return {
         code: c,
         price: roundPrice(distance * BASE_PRICE_PER_KM[c] * surcharge + 20_000),
@@ -125,7 +125,7 @@ export function buildCarriages(tripId: string, seatClass: SeatClassCode, basePri
         const seed = `${tripId}|${id}`;
         const roll = rand(seed, 100);
         const status: Seat["status"] = roll < 46 ? "sold" : roll < 58 ? "held" : "available";
-        // Giường tầng 1 đắt hơn tầng 2, tầng 2 đắt hơn tầng 3
+        // Lower berth costs more than middle, middle more than upper
         const berthLevel = seatClass === "SOFT_SEAT" ? undefined : ((c - 1) % (cfg.perRow / 2)) + 1;
         const levelFactor = berthLevel ? [1.12, 1, 0.9][berthLevel - 1] : 1;
         seats.push({

@@ -21,12 +21,12 @@ public class RedisConfig {
 
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
-        objectMapper.registerModule(new JavaTimeModule());   // BẮT BUỘC: entity có LocalDateTime
+        objectMapper.registerModule(new JavaTimeModule());   // REQUIRED: entities have LocalDateTime fields
 
         Jackson2JsonRedisSerializer<Object> serializer =
                 new Jackson2JsonRedisSerializer<>(objectMapper, Object.class);
 
-        // key = chuỗi thuần → nhìn được bằng redis-cli, debug dễ
+        // key = plain string → readable in redis-cli, easy to debug
         template.setKeySerializer(new StringRedisSerializer());
         template.setValueSerializer(serializer);
         template.setHashKeySerializer(new StringRedisSerializer());

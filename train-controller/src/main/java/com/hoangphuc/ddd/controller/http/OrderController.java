@@ -12,10 +12,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Buoc cuoi cua vong doi: doi luot giu cho thanh don hang.
+ * Last step of the lifecycle: turn a hold into an order.
  *
- *   POST /orders                   { holdId } -> tao don
- *   GET  /orders/{orderNumber}     tra cuu don
+ *   POST /orders                   { holdId } -> create the order
+ *   GET  /orders/{orderNumber}     look up an order
  */
 @RestController
 @RequestMapping("/orders")
@@ -26,8 +26,9 @@ public class OrderController {
     private final OrderAppService orderAppService;
 
     @PostMapping
-    public ResultMessage<OrderDTO> create(@Valid @RequestBody CreateOrderRequest request) {
-        return toResponse(orderAppService.createFromHold(request.getHoldId()));
+    public ResultMessage<OrderDTO> create(@Valid @RequestBody CreateOrderRequest request,
+                                          @RequestHeader(value = HoldController.QUEUE_TOKEN_HEADER, required = false) String queueToken) {
+        return toResponse(orderAppService.createFromHold(request.getHoldId(), queueToken));
     }
 
     @GetMapping("/{orderNumber}")
@@ -38,15 +39,15 @@ public class OrderController {
     private ResultMessage<OrderDTO> toResponse(OrderResult result) {
         return switch (result.getStatus()) {
             case SUCCESS          -> ResultUtil.data(result.getOrder());
-            case HOLD_NOT_FOUND   -> ResultUtil.error(404, "Khong tim thay luot giu cho");
-            case ORDER_NOT_FOUND  -> ResultUtil.error(404, "Khong tim thay don hang");
-            case TICKET_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay ve");
-            // 410 Gone: tung ton tai, gio mat roi -> client hien "Het gio giu cho"
-            case HOLD_EXPIRED     -> ResultUtil.error(410, "Het gio giu cho, moi ban chon lai");
-            // 422 chu khong phai 409: 409 frontend hieu la "het ve", con day
-            // la du lieu chua du — cho van con, khach quay lai nhap la xong.
-            case PASSENGERS_MISSING -> ResultUtil.error(422, "Chua nhap du thong tin hanh khach cho tung cho");
-            case ERROR            -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
+            case HOLD_NOT_FOUND   -> ResultUtil.error(404, "Hold not found");
+            case ORDER_NOT_FOUND  -> ResultUtil.error(404, "Order not found");
+            case TICKET_NOT_FOUND -> ResultUtil.error(404, "Ticket not found");
+            // 410 Gone: existed, now gone -> the client shows "Your hold has expired"
+            case HOLD_EXPIRED     -> ResultUtil.error(410, "Your hold has expired, please pick your seats again");
+            // 422, not 409: the frontend reads 409 as "sold out", while this is
+            // incomplete data — the seats are still held, the customer just goes back and fills it in.
+            case PASSENGERS_MISSING -> ResultUtil.error(422, "Passenger details are missing for some seats");
+            case ERROR            -> ResultUtil.error(500, "System error, please try again");
         };
     }
 }

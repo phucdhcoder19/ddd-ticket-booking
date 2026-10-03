@@ -14,18 +14,19 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Sinh chuyến tàu khi có người đầu tiên tìm tới ngày đó.
+ * Provisions a trip when the first person searches for that date.
  *
- * Đây là CÙNG MỘT BÀI TOÁN với cache stampede ở TicketDetailCacheService,
- * chỉ khác là thứ đắt tiền không phải một câu SELECT mà là ghi ~600 dòng ghế:
+ * This is THE SAME PROBLEM as the cache stampede in TicketDetailCacheService,
+ * except the expensive thing is not a SELECT but writing ~600 seat rows:
  *
- *   1. Hỏi xem chuyến có chưa
- *   2. Chưa -> giành khoá; chỉ một luồng được sinh
- *   3. Sau khi có khoá, HỎI LẠI LẦN NỮA (double-check)
- *   4. Sinh ghế, nhả khoá
+ *   1. Ask whether the trip exists
+ *   2. No -> take the lock; only one thread may provision
+ *   3. Once the lock is held, ASK AGAIN (double-check)
+ *   4. Generate the seats, release the lock
  *
- * Thiếu bước 3 thì 5000 người cùng tìm sẽ lần lượt sinh 5000 lần — chỉ khác
- * là xếp hàng thay vì ùa cùng lúc. Kết quả: 3 triệu dòng ghế trùng.
+ * Without step 3, 5000 people searching at once would provision 5000 times
+ * one after another — queued instead of all at once. Result: 3 million
+ * duplicate seat rows.
  */
 @Service
 @Slf4j
@@ -33,7 +34,7 @@ import java.util.concurrent.TimeUnit;
 public class TripProvisionService {
 
     private static final long LOCK_WAIT_SECONDS = 3;
-    /** Sinh 600 ghế mất ~1s, cho rộng tay phòng lúc DB bận. */
+    /** Generating 600 seats takes ~1s; leave plenty of room for a busy DB. */
     private static final long LOCK_LEASE_SECONDS = 20;
 
     private final TripRepository tripRepository;
@@ -41,36 +42,36 @@ public class TripProvisionService {
     private final TripCreationService tripCreationService;
 
     /**
-     * Lấy chuyến của (tàu, ngày). Chưa có thì sinh.
+     * Get the trip for (train, date). Provision it if it does not exist.
      *
-     * @return chuyến đã sẵn sàng bán, hoặc rỗng nếu không sinh được
+     * @return a trip ready for sale, or empty if it could not be provisioned
      */
     public Optional<Trip> ensureTrip(Train train, LocalDate serviceDate) {
-        // ---- BƯỚC 1: đã có chưa ----
+        // ---- STEP 1: does it exist ----
         Optional<Trip> existing = tripRepository.findByTrainAndDate(train.getId(), serviceDate);
         if (existing.isPresent()) {
             return existing;
         }
 
-        // ---- BƯỚC 2: giành khoá ----
+        // ---- STEP 2: take the lock ----
         String lockKey = "LOCK:TRIP:" + train.getId() + ":" + serviceDate;
         DistributedLocker locker = distributedLockService.getLock(lockKey);
         boolean locked = false;
         try {
             locked = locker.tryLock(LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS, TimeUnit.SECONDS);
             if (!locked) {
-                // Người khác đang sinh. Chờ 3s rồi mà chưa xong -> thử đọc lần cuối.
-                log.warn("[TRIP] khong gianh duoc khoa | {}", lockKey);
+                // Someone else is provisioning. Still not done after 3s -> read one last time.
+                log.warn("[TRIP] could not acquire the lock | {}", lockKey);
                 return tripRepository.findByTrainAndDate(train.getId(), serviceDate);
             }
 
-            // ---- BƯỚC 3: DOUBLE-CHECK ----
+            // ---- STEP 3: DOUBLE-CHECK ----
             existing = tripRepository.findByTrainAndDate(train.getId(), serviceDate);
             if (existing.isPresent()) {
                 return existing;
             }
 
-            // ---- BƯỚC 4: chỉ MỘT luồng tới được đây ----
+            // ---- STEP 4: only ONE thread gets here ----
             return Optional.of(tripCreationService.createTripWithSeats(train, serviceDate));
 
         } catch (InterruptedException e) {

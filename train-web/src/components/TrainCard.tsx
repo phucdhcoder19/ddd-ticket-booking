@@ -5,11 +5,11 @@ import { formatDuration, formatTime, formatVnd } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 /**
- * Thẻ một chuyến tàu.
+ * Card for one trip.
  *
- * Bố cục ưu tiên theo đúng thứ tự hành khách ra quyết định:
- *   giờ đi → giờ đến → thời gian hành trình → giá thấp nhất → còn bao nhiêu chỗ.
- * Mỗi hạng chỗ là một nút bấm riêng, bấm thẳng vào hạng muốn mua, bớt một bước.
+ * The layout follows the order in which travellers decide:
+ *   departure → arrival → journey time → lowest price → seats left.
+ * Each seat class is its own button, so users tap straight into the class they want, saving a step.
  */
 export function TrainCard({
   trip, onSelectClass, highlightClass,
@@ -27,17 +27,17 @@ export function TrainCard({
         "overflow-hidden rounded-2xl border bg-white shadow-[var(--shadow-soft)] transition-shadow",
         soldOut ? "border-ink-200 opacity-75" : "border-ink-200 hover:shadow-[var(--shadow-lift)]",
       )}
-      aria-label={`Tàu ${trip.trainCode}, khởi hành ${formatTime(trip.departAt)}`}
+      aria-label={`Train ${trip.trainCode}, departs ${formatTime(trip.departAt)}`}
     >
       <div className="flex items-start justify-between gap-3 px-4 pt-4">
         <div className="flex items-center gap-2">
-          <span className="rounded-lg bg-son-600 px-2.5 py-1 text-sm font-bold text-white">{trip.trainCode}</span>
+          <span className="rounded-lg bg-brand-600 px-2.5 py-1 text-sm font-bold text-white">{trip.trainCode}</span>
           <span className="text-sm text-ink-600">{formatDuration(trip.durationMinutes)}</span>
         </div>
-        {soldOut ? <Badge tone="muted">Hết vé</Badge> : <AvailabilityBadge available={trip.availableTotal} />}
+        {soldOut ? <Badge tone="muted">Sold out</Badge> : <AvailabilityBadge available={trip.availableTotal} />}
       </div>
 
-      {/* Trục hành trình: giờ đi ─ thời lượng ─ giờ đến */}
+      {/* Journey line: departure ─ duration ─ arrival */}
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="text-left">
           <div className="tnum text-2xl font-bold text-ink-900">{formatTime(trip.departAt)}</div>
@@ -45,11 +45,11 @@ export function TrainCard({
         </div>
         <div className="flex flex-1 flex-col items-center gap-1" aria-hidden>
           <div className="flex w-full items-center gap-1">
-            <span className="size-2 rounded-full bg-son-600" />
-            <span className="h-0.5 flex-1 bg-gradient-to-r from-son-600 via-mai-300 to-son-600" />
-            <span className="text-son-600">🚆</span>
-            <span className="h-0.5 flex-1 bg-gradient-to-r from-son-600 via-mai-300 to-son-600" />
-            <span className="size-2 rounded-full bg-son-600" />
+            <span className="size-2 rounded-full bg-brand-600" />
+            <span className="h-0.5 flex-1 bg-gradient-to-r from-brand-600 via-accent-300 to-brand-600" />
+            <span className="text-brand-600">🚆</span>
+            <span className="h-0.5 flex-1 bg-gradient-to-r from-brand-600 via-accent-300 to-brand-600" />
+            <span className="size-2 rounded-full bg-brand-600" />
           </div>
         </div>
         <div className="text-right">
@@ -58,7 +58,7 @@ export function TrainCard({
         </div>
       </div>
 
-      {/* Các hạng chỗ */}
+      {/* Seat classes */}
       <div className="border-t border-ink-100 bg-ink-50/60 px-3 py-3">
         <ul className="flex flex-col gap-2">
           {trip.classes.map((c) => {
@@ -69,13 +69,13 @@ export function TrainCard({
                   type="button"
                   disabled={out}
                   onClick={() => onSelectClass(c.code)}
-                  aria-label={`Chọn ${SEAT_CLASS_LABEL[c.code]}, giá ${formatVnd(c.price)}, ${out ? "đã hết vé" : `còn ${c.available} chỗ`}`}
+                  aria-label={`Choose ${SEAT_CLASS_LABEL[c.code]}, price ${formatVnd(c.price)}, ${out ? "sold out" : `${c.available} seats left`}`}
                   className={cn(
                     "flex w-full min-h-14 items-center gap-3 rounded-xl border-2 bg-white px-3 py-2 text-left transition-colors",
                     out
                       ? "cursor-not-allowed border-ink-200 opacity-60"
-                      : "border-ink-200 hover:border-son-400 hover:bg-son-50/50 active:bg-son-50",
-                    highlightClass === c.code && "border-son-500 bg-son-50",
+                      : "border-ink-200 hover:border-brand-400 hover:bg-brand-50/50 active:bg-brand-50",
+                    highlightClass === c.code && "border-brand-500 bg-brand-50",
                   )}
                 >
                   <div className="min-w-0 flex-1">
@@ -83,14 +83,14 @@ export function TrainCard({
                     <div className="text-xs text-ink-500">{SEAT_CLASS_LABEL[c.code]}</div>
                   </div>
                   <div className="text-right">
-                    <div className={cn("tnum font-bold", out ? "text-ink-400 line-through" : "text-son-700")}>
+                    <div className={cn("tnum font-bold", out ? "text-ink-400 line-through" : "text-brand-700")}>
                       {formatVnd(c.price)}
                     </div>
                     <div className="mt-0.5">
                       <AvailabilityBadge available={c.available} />
                     </div>
                   </div>
-                  <span aria-hidden className={cn("text-xl", out ? "text-ink-300" : "text-son-600")}>›</span>
+                  <span aria-hidden className={cn("text-xl", out ? "text-ink-300" : "text-brand-600")}>›</span>
                 </button>
               </li>
             );
@@ -98,7 +98,7 @@ export function TrainCard({
         </ul>
         {!soldOut && (
           <p className="mt-2 px-1 text-xs text-ink-500">
-            Giá từ <span className="tnum font-semibold text-ink-700">{formatVnd(cheapest)}</span> / chỗ
+            From <span className="tnum font-semibold text-ink-700">{formatVnd(cheapest)}</span> / seat
           </p>
         )}
       </div>
@@ -126,7 +126,7 @@ export function TrainCardSkeleton() {
   );
 }
 
-/** Nút giữ chỗ dùng chung ở chân màn hình chọn ghế */
+/** Shared hold button at the bottom of the seat selection screen */
 export function StickyActionBar({
   children, note,
 }: { children: React.ReactNode; note?: React.ReactNode }) {

@@ -24,7 +24,7 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- Cau noi Actuator -> Prometheus: mo endpoint /actuator/prometheus -->
+        <!-- Bridges Actuator -> Prometheus: exposes the /actuator/prometheus endpoint -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
@@ -34,7 +34,7 @@
 
     <build>
         <plugins>
-            <!-- Cho phep: mvn spring-boot:run  va  dong goi jar chay duoc -->
+            <!-- Enables: mvn spring-boot:run  and  packaging a runnable jar -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

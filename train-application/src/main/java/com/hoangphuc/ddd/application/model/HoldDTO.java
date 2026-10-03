@@ -8,7 +8,7 @@ import java.util.List;
 @Data
 public class HoldDTO {
 
-    /** Ma cong khai cua luot giu cho. Khong bao gio la id tu tang. */
+    /** Public code of the hold. Never the auto-increment id. */
     private String holdId;
 
     private String tripId;
@@ -16,19 +16,19 @@ public class HoldDTO {
     private String fromCode;
     private String toCode;
 
-    /** Nhung cho dang giu, kem gia tung cho. */
+    /** Seats being held, with the price of each. */
     private List<HoldItemDTO> items;
 
-    /** Tong tien tam tinh — chua tru giam gia cua tung hanh khach. */
+    /** Provisional total — before each passenger's discount. */
     private long totalAmount;
 
-    /** Het han luc nao — client ve dong ho tu moc nay. */
+    /** When it expires — the client draws its timer from this moment. */
     private LocalDateTime expiresAt;
 
-    /** Gio SERVER. Client phai tru theo gio nay, khong theo gio may minh. */
+    /** SERVER time. The client must count from this, not from its own clock. */
     private LocalDateTime serverNow;
 
-    /** Tinh san cho client do phai tu tru hai moc thoi gian. */
+    /** Precomputed so the client does not have to subtract the two timestamps. */
     private long secondsLeft;
 
     /** HOLDING | USED | RELEASED | EXPIRED */

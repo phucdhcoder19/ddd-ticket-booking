@@ -15,12 +15,13 @@ import { isPassengerValid } from "@/lib/validate";
 import { formatTime, formatVnd } from "@/lib/format";
 
 /**
- * Màn 5 — Giữ chỗ và nhập thông tin hành khách.
+ * Screen 5 — Hold and passenger details.
  *
- * Quyết định thiết kế quan trọng nhất: KHÔNG chặn người dùng nhập khi còn lỗi.
- * Form vẫn cho gõ thoải mái, chỉ nút "Tiếp tục" mới kiểm tra toàn bộ và cuộn
- * tới ô sai đầu tiên. Ép sửa lỗi ngay tại chỗ trong khi đồng hồ đang chạy là
- * cách chắc chắn khiến người dùng hoảng và mất chỗ.
+ * The most important design decision: DO NOT block typing while there are
+ * errors. The form lets users type freely, and only the "Continue" button
+ * checks everything and scrolls to the first invalid field. Forcing fixes on
+ * the spot while the timer runs is a sure way to make people panic and lose
+ * their seats.
  */
 export function PassengerInfoPage() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export function PassengerInfoPage() {
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (!hold || !trip) navigate("/chuyen-tau", { replace: true });
+    if (!hold || !trip) navigate("/trips", { replace: true });
   }, [hold, trip, navigate]);
 
   const total = useMemo(
@@ -55,7 +56,7 @@ export function PassengerInfoPage() {
     if (!hold) return;
     if (!allValid) {
       setShowErrors(true);
-      // Đưa người dùng tới đúng ô đang sai thay vì để họ tự dò tìm
+      // Take the user to the invalid field instead of making them hunt for it
       requestAnimationFrame(() => {
         const firstInvalid = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
         firstInvalid?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -63,14 +64,14 @@ export function PassengerInfoPage() {
       });
       toast.show({
         tone: "warning",
-        title: "Còn thông tin chưa hợp lệ",
-        detail: "Bạn kiểm tra lại các ô được đánh dấu đỏ giúp nhé.",
+        title: "Some details are not valid yet",
+        detail: "Please check the fields marked in red.",
       });
       return;
     }
     try {
       await api.savePassengers(hold.holdId, passengers);
-      navigate("/thanh-toan");
+      navigate("/payment");
     } catch (e) {
       if (e instanceof ApiError && e.kind === "HOLD_EXPIRED") {
         handleExpire();
@@ -78,8 +79,8 @@ export function PassengerInfoPage() {
       }
       toast.show({
         tone: "error",
-        title: "Chưa lưu được thông tin",
-        detail: "Bạn thử bấm lại giúp chúng tôi nhé, chỗ vẫn đang được giữ.",
+        title: "Your details were not saved",
+        detail: "Please press the button again, your seats are still held.",
       });
       throw e;
     }
@@ -91,12 +92,12 @@ export function PassengerInfoPage() {
     setPassengers(next);
   };
 
-  /** Chép nhanh số điện thoại của hành khách đầu cho cả đoàn — cả nhà thường dùng chung một số */
+  /** Copy the first passenger's phone to the whole group — families often share one number */
   const copyPhoneToAll = () => {
     const phone = passengers[0]?.phone;
     if (!phone) return;
     setPassengers(passengers.map((p) => ({ ...p, phone })));
-    toast.show({ tone: "success", title: "Đã dùng chung số điện thoại cho tất cả hành khách" });
+    toast.show({ tone: "success", title: "The same phone number is now used for all passengers" });
   };
 
   if (!hold || !trip) return <HoldExpiredDialog open={expired} tripId={trip?.id} />;
@@ -109,18 +110,18 @@ export function PassengerInfoPage() {
 
       <div className="rounded-2xl border border-ink-200 bg-white px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="rounded-lg bg-son-600 px-2 py-0.5 text-sm font-bold text-white">{trip.trainCode}</span>
+          <span className="rounded-lg bg-brand-600 px-2 py-0.5 text-sm font-bold text-white">{trip.trainCode}</span>
           <span className="font-semibold text-ink-900">
             {trip.fromStation.name} → {trip.toStation.name}
           </span>
         </div>
-        <p className="mt-1 text-sm text-ink-600">Khởi hành {formatTime(trip.departAt)}</p>
+        <p className="mt-1 text-sm text-ink-600">Departs {formatTime(trip.departAt)}</p>
       </div>
 
       <div>
-        <h1 className="text-xl font-bold">Thông tin hành khách</h1>
+        <h1 className="text-xl font-bold">Passenger details</h1>
         <p className="mt-1 text-sm text-ink-600">
-          Họ tên và số CCCD phải khớp với giấy tờ mang theo khi lên tàu, nếu sai sẽ không được đi.
+          Names and ID numbers must match the documents carried on board, otherwise the passenger cannot travel.
         </p>
       </div>
 
@@ -138,9 +139,9 @@ export function PassengerInfoPage() {
               <button
                 type="button"
                 onClick={copyPhoneToAll}
-                className="mt-1.5 min-h-11 w-full rounded-xl border-2 border-dashed border-ink-300 px-3 text-sm font-semibold text-ink-700 hover:border-son-300 hover:text-son-700"
+                className="mt-1.5 min-h-11 w-full rounded-xl border-2 border-dashed border-ink-300 px-3 text-sm font-semibold text-ink-700 hover:border-brand-300 hover:text-brand-700"
               >
-                Dùng số điện thoại này cho tất cả hành khách
+                Use this phone number for all passengers
               </button>
             )}
           </div>
@@ -150,8 +151,8 @@ export function PassengerInfoPage() {
       <StickyActionBar
         note={
           <div className="flex items-center justify-between">
-            <span className="text-sm text-ink-600">Tổng cộng {hold.items.length} vé</span>
-            <span className="tnum text-lg font-bold text-son-700">{formatVnd(total)}</span>
+            <span className="text-sm text-ink-600">Total for {hold.items.length} {hold.items.length === 1 ? "ticket" : "tickets"}</span>
+            <span className="tnum text-lg font-bold text-brand-700">{formatVnd(total)}</span>
           </div>
         }
       >
@@ -159,14 +160,14 @@ export function PassengerInfoPage() {
           size="lg"
           fullWidth
           loading={pending}
-          loadingText="Đang lưu thông tin…"
+          loadingText="Saving your details…"
           onClick={() => void goToPayment().catch(() => {})}
         >
-          Tiếp tục thanh toán
+          Continue to payment
         </Button>
         {!allValid && showErrors && (
-          <p role="status" className="mt-2 text-center text-sm font-medium text-son-700">
-            Vui lòng hoàn tất các ô được đánh dấu phía trên.
+          <p role="status" className="mt-2 text-center text-sm font-medium text-brand-700">
+            Please complete the fields marked above.
           </p>
         )}
       </StickyActionBar>

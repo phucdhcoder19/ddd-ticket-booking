@@ -1,6 +1,6 @@
 # Train Ticket Booking
 
-A high-concurrency train ticket booking system for the Vietnamese North–South railway, built around the Lunar New Year (Tết) rush. Thousands of customers go after the same seats the moment a sale opens.
+A high-concurrency train ticket booking system for the Vietnamese North–South railway, built around the Lunar New Year rush. Thousands of customers go after the same seats the moment a sale opens.
 
 The backend is a Spring Boot application organised in **DDD layers**. The frontend is a React + Vite single-page app. The project is mainly about the hard parts of flash-sale ticketing: atomic stock deduction, time-limited seat holds, cache stampede protection, and transaction consistency between Redis and MySQL.
 
@@ -26,13 +26,13 @@ The backend is a Spring Boot application organised in **DDD layers**. The fronte
 - **Station & trip search**: 15 stations on the Hanoi → Saigon line and 7 train services (SE1, SE3, SE5, SE7, SE9, TN3, SE22).
 - **Lazy trip provisioning**: a trip and its seats (~240 per train) are generated the first time someone searches for that date. A distributed lock stops duplicate generation.
 - **Seat map per carriage**: soft seats (2-2 layout), 6-berth and 4-berth sleeper compartments.
-- **Distance-based pricing**: fare = distance × class rate × berth-level factor × peak (Tết) surcharge.
+- **Distance-based pricing**: fare = distance × class rate × berth-level factor × Lunar New Year peak surcharge.
 - **Seat holds with expiry**: selected seats are reserved for 10 minutes (configurable). A background job releases expired holds.
 - **Passenger details per seat**: one named passenger per held seat, with discounts (student, child, senior) calculated on the server.
 - **Hold → order conversion**: an order is created from a hold in a single transaction.
 - **Flash-sale "buy by quantity" flow**: Redis Lua stock deduction backed by a MySQL transaction, with compensation on failure.
 - **Sale window**: requests are blocked before the sale opens and after it closes, and the UI shows a countdown.
-- **Waiting room endpoint**: the path is wired end to end. For now it admits everyone immediately; see the [roadmap](#known-limitations--roadmap).
+- **Waiting room**: first come, first served queue on Redis. At most `app.queue.capacity` people are inside at once, and `POST /holds` rejects callers without a valid admission token (`X-Queue-Token`).
 - **Metrics**: Prometheus metrics with p50/p95/p99 latency histograms and SLO buckets.
 
 ---
@@ -226,7 +226,7 @@ Main settings in `train-start/src/main/resources/application.yml`:
 | `app.hold.duration`                | `10m`                  | How long a hold reserves seats (set `30s` to watch the job run) |
 | `app.hold.scan-interval-ms`        | `10000`                | Interval of the expired-hold release job                      |
 | `app.hold.release-batch`           | `200`                  | Max holds released per scan (keeps transactions short)        |
-| `app.pricing.peak-from` / `peak-to`| `2027-01-25` / `2027-02-05` | Tết peak period                                          |
+| `app.pricing.peak-from` / `peak-to`| `2027-01-25` / `2027-02-05` | Lunar New Year peak period                               |
 | `app.pricing.peak-surcharge`       | `1.35`                 | Fare multiplier during the peak period                        |
 | `app.web.allowed-origin-pattern`   | `http://localhost:[*]` | CORS origin. Replace with a real domain in production.        |
 | `app.demo.fail-after-deduct`       | `false`                | Set `true` to force a failure after the stock deduction, to check that the transaction rolls back |
@@ -277,13 +277,13 @@ POST /api/holds
 PUT /api/holds/HOLD-1A2B3C4D5E6F/passengers
 {
   "passengers": [
-    { "seatId": "C7-1", "fullName": "Nguyễn Văn An", "idNumber": "001203004567", "phone": "0912345678", "discount": "STUDENT" },
-    { "seatId": "C7-2", "fullName": "Trần Thị Bình", "idNumber": "001203004568", "phone": "0912345678", "discount": "NONE" }
+    { "seatId": "C7-1", "fullName": "Jane Doe", "idNumber": "001203004567", "phone": "0912345678", "discount": "STUDENT" },
+    { "seatId": "C7-2", "fullName": "John Doe", "idNumber": "001203004568", "phone": "0912345678", "discount": "NONE" }
   ]
 }
 ```
 
-Each held seat needs exactly one passenger. The server applies discounts (`STUDENT` −10%, `CHILD` −25%, `SENIOR` −15%) and rounds to the nearest 1,000đ. `POST /orders` returns `422` until passengers are saved. The order total is the sum of the discounted prices.
+Each held seat needs exactly one passenger. The server applies discounts (`STUDENT` −10%, `CHILD` −25%, `SENIOR` −15%) and rounds to the nearest 1,000 VND. `POST /orders` returns `422` until passengers are saved. The order total is the sum of the discounted prices.
 
 ### Orders
 
@@ -314,7 +314,16 @@ POST /api/ticket/buy
 | Method | Path                  | Description              |
 | ------ | --------------------- | ------------------------ |
 | POST   | `/api/queue`          | Join the queue           |
-| GET    | `/api/queue/{token}`  | Check the queue position |
+| GET    | `/api/queue/{token}`  | Check the queue position (`404` = unknown or expired, join again) |
+
+The queue uses three Redis keys: `queue:seq` (counter), `queue:waiting` (sorted set, score = arrival number), and `queue:admitted` (sorted set, score = admission expiry in ms). A job runs every second and admits people with one Lua script, so several app instances can run it at the same time without admitting more than `capacity`. Once admitted, the frontend sends the token as `X-Queue-Token` on every request. `POST /holds` returns `403` without it. `POST /orders` frees the slot after a successful order.
+
+| Key                              | Default | Description                                   |
+| -------------------------------- | ------- | --------------------------------------------- |
+| `app.queue.enabled`              | `true`  | `false` admits everyone and turns off the `/holds` check (useful for load tests) |
+| `app.queue.capacity`             | `500`   | Max people inside at once. Set `2` and open 3 tabs to watch the third one wait |
+| `app.queue.admission-window`     | `15m`   | How long an admitted person has to buy        |
+| `app.queue.max-admit-per-tick`   | `50`    | Max people admitted per job run               |
 
 ---
 
@@ -331,7 +340,7 @@ All Actuator endpoints are exposed:
 
 ## Known Limitations / Roadmap
 
-- **Waiting room is a pass-through.** A real queue needs a Redis sorted set for arrival order, a rate-controlled release, and — most importantly — `POST /holds` must **reject requests without an admitted token**. Otherwise anyone can bypass the queue by calling the API directly.
+- **Waiting room has no heartbeat.** Someone who closes the tab while waiting keeps their place, and when called their slot stays taken until the admission expires (15 minutes). One admission token can also create several holds.
 - **Missing endpoints** the frontend already calls: `GET /me/tickets`, `POST /tickets/{id}/refund`.
 - **`Idempotency-Key`** is sent by the frontend on `POST /holds` and `POST /orders` but is not enforced by the backend yet.
 - **Stock warm-up** is hardcoded to ticket id `1` in `WarmUpStockJob`. It should select the tickets that are about to go on sale.

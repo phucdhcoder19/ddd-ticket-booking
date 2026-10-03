@@ -30,10 +30,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class TripAppServiceImpl implements TripAppService {
 
-    /** Thời gian dừng đỗ dọc đường, cộng thêm vào giờ chạy thuần. */
+    /** Time spent stopped at stations along the way, added to the pure running time. */
     private static final int DWELL_MINUTES = 25;
 
-    /** Tầng giường rẻ nhất của mỗi hạng — dùng để tính giá "từ ...đ". */
+    /** Cheapest berth level of each class — used for the "from ... VND" price. */
     private static final Map<String, Integer> CHEAPEST_BERTH = Map.of(
             TrainCarriage.CLASS_SOFT_SEAT, 0,
             TrainCarriage.CLASS_BERTH_4, 2,
@@ -54,8 +54,8 @@ public class TripAppServiceImpl implements TripAppService {
 
         List<TripDTO> result = new ArrayList<>();
         for (Train train : trainRepository.findActive()) {
-            // Sinh chuyến nếu ngày này chưa ai tìm. Tốn ~1s cho người đầu tiên,
-            // các lượt sau đọc thẳng từ DB.
+            // Provision the trip if nobody has searched this date yet. Costs ~1s
+            // for the first person; later searches read straight from the DB.
             Optional<Trip> trip = tripProvisionService.ensureTrip(train, date);
             if (trip.isEmpty()) {
                 continue;
@@ -66,10 +66,11 @@ public class TripAppServiceImpl implements TripAppService {
     }
 
     /**
-     * Đếm chỗ trống theo hạng, và tính giá thấp nhất của từng hạng.
+     * Count free seats per class, and compute the lowest price of each class.
      *
-     * Một câu GROUP BY cho cả chuyến thay vì đếm riêng từng hạng — màn hình
-     * tìm chuyến hiện 7 tàu × 3 hạng, đếm lẻ là 21 lượt xuống DB.
+     * One GROUP BY for the whole trip instead of counting each class — the
+     * search screen shows 7 trains × 3 classes, counting one by one would be
+     * 21 round trips to the DB.
      */
     private TripDTO toDTO(Train train, Trip trip, Journey journey) {
         Map<String, Integer> freeByClass = new HashMap<>();

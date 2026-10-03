@@ -8,17 +8,17 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Đơn hàng — bằng chứng "AI đã mua bao nhiêu vé, giá bao nhiêu".
- * Thiếu bảng này thì trừ kho xong không biết vé đi đâu.
+ * An order — the record of "WHO bought how many tickets, at what price".
+ * Without this table, stock goes down and nobody knows where the tickets went.
  *
- * Phục vụ HAI luồng mua, nên một nửa số cột luôn rỗng ở mỗi luồng:
+ * Serves TWO purchase flows, so half of the columns are always empty in each:
  *
- *   mua thẳng (bài 19/21)  -> ticketId + quantity + unitPrice
- *   đặt chỗ theo ghế       -> tripId + fromCode/toCode, ghế nằm ở seat.orderId
+ *   buy by quantity (lessons 19/21)  -> ticketId + quantity + unitPrice
+ *   book by seat                     -> tripId + fromCode/toCode, seats live in seat.orderId
  *
- * Vì sao không tách hai bảng: đơn hàng là chứng từ thu tiền. Một bảng thì
- * "tổng doanh thu" là một câu SELECT; hai bảng thì mọi báo cáo về sau đều
- * phải UNION, và ai quên vế thứ hai là ra số sai mà không có gì báo.
+ * Why not two tables: an order is a payment record. With one table, "total
+ * revenue" is one SELECT; with two, every future report needs a UNION, and
+ * whoever forgets the second half gets a wrong number with no warning.
  */
 @Data
 @Accessors(chain = true)
@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
        indexes = @Index(name = "idx_ticket_order_user", columnList = "userId"))
 public class TicketOrder {
 
-    public static final int STATUS_PENDING   = 0;   // mới tạo, chờ thanh toán
+    public static final int STATUS_PENDING   = 0;   // just created, waiting for payment
     public static final int STATUS_PAID      = 1;
     public static final int STATUS_CANCELLED = 2;
 
@@ -35,20 +35,20 @@ public class TicketOrder {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Mã đơn trả cho khách. UNIQUE để không bao giờ trùng. */
+    /** Order number given to the customer. UNIQUE so it never repeats. */
     @Column(nullable = false, unique = true, length = 64)
     private String orderNumber;
 
     @Column(nullable = false)
     private Long userId;
 
-    /** Luồng mua thẳng. NULL với đơn đặt theo ghế. */
+    /** Buy-by-quantity flow. NULL for seat bookings. */
     private Long ticketId;
 
-    /** Luồng đặt theo ghế. NULL với đơn mua thẳng. */
+    /** Seat booking flow. NULL for buy-by-quantity orders. */
     private Long tripId;
 
-    /** Hành trình của khách — quyết định giá, nên phải lưu cùng đơn. */
+    /** The passenger's journey — it determines the price, so it is stored with the order. */
     @Column(length = 8)
     private String fromCode;
 
@@ -58,9 +58,9 @@ public class TicketOrder {
     private int quantity;
 
     /**
-     * Giá 1 vé TẠI THỜI ĐIỂM MUA — giá vé sau này đổi thì đơn cũ không bị
-     * ảnh hưởng. NULL với đơn đặt theo ghế: mỗi ghế một giá khác nhau
-     * (tầng 1 đắt hơn tầng 3), không có con số "đơn giá" nào đúng cho cả đơn.
+     * Price per ticket AT PURCHASE TIME — later price changes do not affect
+     * old orders. NULL for seat bookings: every seat has its own price (lower
+     * berth costs more than upper), so no single "unit price" fits the order.
      */
     @Column(precision = 15, scale = 2)
     private BigDecimal unitPrice;
@@ -70,7 +70,7 @@ public class TicketOrder {
 
     private int orderStatus;
 
-    /** Thời điểm trả tiền xong. NULL khi đơn chưa thanh toán. */
+    /** When payment completed. NULL while unpaid. */
     private LocalDateTime paidAt;
 
     private LocalDateTime createdAt;

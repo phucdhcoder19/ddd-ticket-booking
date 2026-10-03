@@ -9,12 +9,13 @@ import java.util.List;
 public class OrderDTO {
 
     /**
-     * Dinh danh cong khai cua don. Bang dung ma don chu khong phai id tu
-     * tang — cung ly do voi holdCode: biet id=41 la doan duoc don cua nguoi khac.
+     * Public identifier of the order. Uses the order number, not the
+     * auto-increment id — same reason as holdCode: knowing id=41 lets you guess
+     * someone else's order.
      */
     private String orderId;
 
-    /** Ma don in cho khach doc. Hien tai trung voi orderId. */
+    /** Order code printed for the customer. Currently the same as orderId. */
     private String code;
 
     /** PENDING | PAID | CANCELLED */
@@ -26,12 +27,12 @@ public class OrderDTO {
     private String fromCode;
     private String toCode;
 
-    /** Nhung cho da mua. Rong voi don mua thang (luong bai 19/21). */
+    /** Seats bought. Empty for buy-by-quantity orders (lessons 19/21). */
     private List<HoldItemDTO> items;
 
     private LocalDateTime paidAt;
     private LocalDateTime createdAt;
 
-    /** Vi sao that bai — chi co khi don bi huy. */
+    /** Why it failed — only set when the order was cancelled. */
     private String failureReason;
 }

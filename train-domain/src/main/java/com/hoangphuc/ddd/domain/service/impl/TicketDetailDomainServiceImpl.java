@@ -28,7 +28,7 @@ public class TicketDetailDomainServiceImpl implements TicketDetailDomainService 
 
     @Override
     public boolean decreaseStock(Long ticketId, int quantity) {
-        if (quantity <= 0) return false;        // đặt validate ở đây, đừng để rơi xuống SQL
+        if (quantity <= 0) return false;        // validate here, do not let it reach SQL
         return ticketDetailRepository.decreaseStock(ticketId, quantity);
     }
 
@@ -38,19 +38,19 @@ public class TicketDetailDomainServiceImpl implements TicketDetailDomainService 
     }
 
     /**
-     * LUẬT NGHIỆP VỤ: ngay lúc này có được mua không.
+     * BUSINESS RULE: can people buy right now?
      *
-     * Tách hẳn khỏi resolveSaleWindow() dù hai thứ nghe giống nhau, vì
-     * chúng trả lời hai câu hỏi khác nhau:
+     * Kept fully separate from resolveSaleWindow() even though they sound
+     * alike, because they answer different questions:
      *
-     *   resolveSaleWindow  "màn hình nên đếm ngược tới mốc nào"
-     *   isSaleOpen         "người này có được đặt chỗ ngay bây giờ không"
+     *   resolveSaleWindow  "which moment should the screen count down to"
+     *   isSaleOpen         "may this person book a seat right now"
      *
-     * Chúng lệch nhau ở đúng một tình huống, và tình huống đó là bình
-     * thường chứ không hiếm: đợt 1 đang bán, đợt 2 đã lên lịch cho tháng
-     * sau. resolveSaleWindow trả về "chưa mở, đếm ngược tới đợt 2" — đúng
-     * với cái đồng hồ trên trang chủ. Nếu lấy luôn nó làm cổng chặn thì
-     * toàn bộ khách của đợt 1 bị từ chối, chỉ vì có một đợt khác xếp sau.
+     * They disagree in exactly one situation, and it is a normal one, not a
+     * rare one: sale 1 is running while sale 2 is scheduled for next month.
+     * resolveSaleWindow returns "not open, counting down to sale 2" — right
+     * for the clock on the home page. Use it as the gate and every customer
+     * of sale 1 gets rejected just because another sale is queued behind it.
      */
     @Override
     public boolean isSaleOpen(LocalDateTime now) {
@@ -60,15 +60,15 @@ public class TicketDetailDomainServiceImpl implements TicketDetailDomainService 
     }
 
     /**
-     * LUẬT NGHIỆP VỤ: đợt mở bán nào đang có hiệu lực.
+     * BUSINESS RULE: which sale window is in effect.
      *
-     * Thứ tự ưu tiên — người dùng quan tâm "còn bao lâu nữa được mua":
-     *   ① có vé chưa tới giờ mở  -> đếm ngược tới giờ đó, chưa mở
-     *   ② không, nhưng có vé đã mở và còn trong khung bán  -> đang mở
-     *   ③ không có gì (hết giờ, hoặc chưa cấu hình lịch)   -> coi như đóng
+     * Priority order — users care about "how long until I can buy":
+     *   ① a ticket has not opened yet           -> count down to it, not open
+     *   ② no, but one has opened and is still within its window  -> open
+     *   ③ nothing (all ended, or no schedule configured)         -> closed
      *
-     * Bước ② dùng lại đúng TicketDetail.isSaleEnded() mà placeOrder() dùng
-     * để chặn — một luật, một chỗ định nghĩa.
+     * Step ② reuses exactly the TicketDetail.isSaleEnded() that placeOrder()
+     * uses as its gate — one rule, defined in one place.
      */
     @Override
     public SaleWindow resolveSaleWindow(LocalDateTime now) {

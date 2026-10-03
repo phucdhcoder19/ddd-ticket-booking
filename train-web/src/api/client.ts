@@ -1,9 +1,9 @@
 /**
- * Lớp gọi API duy nhất của ứng dụng. Tầng UI chỉ import từ đây.
- * VITE_USE_MOCK=true  -> dùng mock server trong trình duyệt
- * VITE_USE_MOCK=false -> gọi thật qua VITE_API_BASE_URL (mặc định http://localhost:8080/api)
+ * The application's only API layer. The UI imports from here and nowhere else.
+ * VITE_USE_MOCK=true  -> use the in-browser mock server
+ * VITE_USE_MOCK=false -> call the real backend via VITE_API_BASE_URL (default http://localhost:8080/api)
  *
- * Chữ ký hàm hai bên giống hệt nhau nên khi backend sẵn sàng chỉ cần đổi biến môi trường.
+ * Both sides have identical function signatures, so switching to the backend only means changing an env variable.
  */
 import { request, type RequestOptions } from "@/lib/http";
 import { mockApi } from "./mock/server";
@@ -14,7 +14,7 @@ import type {
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 
-/** Tuỳ chọn truyền xuống tầng http (retry, huỷ, báo đang thử lại) */
+/** Options passed down to the http layer (retry, cancel, retry notifications) */
 export type CallOptions = Pick<RequestOptions, "signal" | "onRetry" | "maxRetries" | "timeoutMs" | "idempotencyKey">;
 
 const qs = (params: Record<string, string | number>) =>
@@ -34,11 +34,12 @@ export const api = {
     USE_MOCK ? mockApi.getTrip(tripId) : request<Trip>(`/trips/${tripId}`, o),
 
   /**
-   * Sơ đồ chỗ của một toa.
+   * Seat map of a carriage.
    *
-   * Phải kèm cặp ga: giá từng chỗ tính theo quãng đường khách đi, mà chuyến
-   * tàu thì không biết khách xuống ga nào. Cùng một giường tầng 1 toa 11,
-   * Hà Nội – Vinh và Hà Nội – Sài Gòn là hai giá khác hẳn nhau.
+   * The station pair is required: each seat's price depends on how far the
+   * passenger travels, and the trip does not know where they get off. The same
+   * lower berth in carriage 11 has very different prices on Hanoi – Vinh and
+   * Hanoi – Saigon.
    */
   getCarriages: (
     tripId: string,
@@ -50,7 +51,7 @@ export const api = {
       ? mockApi.getCarriages(tripId, seatClass)
       : request<Carriage[]>(`/trips/${tripId}/carriages${qs({ seatClass, ...route })}`, o),
 
-  /** Giữ chỗ — luôn kèm Idempotency-Key để double-click không tạo hai lượt giữ */
+  /** Hold seats — always with an Idempotency-Key so a double-click does not create two holds */
   holdSeats: (
     input: { tripId: string; seatClass: SeatClassCode; seatIds: string[]; from: string; to: string },
     o?: CallOptions,

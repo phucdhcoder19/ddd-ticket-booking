@@ -1,12 +1,13 @@
 package com.hoangphuc.ddd.application.service.ticket;
 
 /**
- * Luot giu cho chua co du ten hanh khach cho tung ghe.
+ * The hold does not have a passenger name for every seat yet.
  *
- * Nem tu TRONG transaction doi hold -> don, SAU khi markUsed() da chay: nem
- * ra thi Spring rollback, hold quay ve status 0 va khach van con thoi gian
- * quay lai man nhap thong tin. Tra ve null thi hold da bi danh dau "da dung"
- * ma khong co don nao — khach mat cho, khong mua lai duoc.
+ * Thrown from INSIDE the hold -> order transaction, AFTER markUsed() has run:
+ * throwing makes Spring roll back, the hold returns to status 0 and the
+ * customer still has time to go back to the details screen. Returning null
+ * would leave the hold marked "used" with no order — the customer loses the
+ * seats and cannot buy them again.
  */
 public class PassengersMissingException extends RuntimeException {
 

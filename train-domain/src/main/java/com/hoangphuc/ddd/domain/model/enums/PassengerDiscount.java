@@ -4,13 +4,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * Đối tượng được giảm giá vé.
+ * Passenger groups that get a fare discount.
  *
- * Nằm ở DOMAIN chứ không ở controller hay frontend: đây là luật nghiệp vụ
- * quyết định số tiền thu của khách. Frontend cũng có một bảng tỉ lệ y hệt
- * (DISCOUNT_RATE trong types.ts), nhưng bảng đó chỉ để HIỂN THỊ. Nếu server
- * tin con số client gửi lên thì ai sửa request cũng tự giảm được 100%.
- * Client chỉ được nói "tôi là sinh viên", còn giảm bao nhiêu thì server tính.
+ * Lives in the DOMAIN, not in the controller or the frontend: this rule
+ * decides how much money we take from the customer. The frontend has an
+ * identical rate table (DISCOUNT_RATE in types.ts), but it is for DISPLAY
+ * only. If the server trusted a number sent by the client, anyone editing
+ * the request could give themselves 100% off. The client only says "I am a
+ * student"; the server decides how much that is worth.
  */
 public enum PassengerDiscount {
 
@@ -19,7 +20,7 @@ public enum PassengerDiscount {
     CHILD(25),
     SENIOR(15);
 
-    /** Phần trăm giảm. Dùng số nguyên để khỏi dính sai số của double (0.1 + 0.2 != 0.3). */
+    /** Discount in percent. Integer so we avoid double rounding errors (0.1 + 0.2 != 0.3). */
     private final int percent;
 
     PassengerDiscount(int percent) {
@@ -31,12 +32,12 @@ public enum PassengerDiscount {
     }
 
     /**
-     * Giá sau giảm, làm tròn tới nghìn đồng — cùng quy tắc với finalPriceOf()
-     * của frontend, để số khách thấy trên màn hình khớp với số bị trừ.
+     * Price after discount, rounded to the nearest 1,000 VND — same rule as the
+     * frontend finalPriceOf(), so the amount on screen matches the amount charged.
      *
-     * BigDecimal + HALF_UP thay vì Math.round(double): tiền thì không được
-     * phó mặc cho sai số dấu phẩy động, nhất là đúng ở mốc ...500đ, nơi lệch
-     * một chút xíu là làm tròn sang hướng khác, chênh cả 1.000đ.
+     * BigDecimal + HALF_UP instead of Math.round(double): money must not depend
+     * on floating point error, especially right at the ...500 boundary, where a
+     * tiny error flips the rounding direction and changes the price by 1,000 VND.
      */
     public long apply(long basePrice) {
         return BigDecimal.valueOf(basePrice)

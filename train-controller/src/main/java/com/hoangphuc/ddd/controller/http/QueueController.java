@@ -13,10 +13,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Phong cho truoc cua hang.
+ * Waiting room in front of the shop.
  *
- *   POST /queue           xin mot luot
- *   GET  /queue/{token}   toi luot chua
+ *   POST /queue           ask for a turn
+ *   GET  /queue/{token}   is it my turn yet
  */
 @RestController
 @RequestMapping("/queue")
@@ -31,8 +31,14 @@ public class QueueController {
         return ResultUtil.data(queueAppService.join());
     }
 
+    /**
+     * 404 when the token is nowhere anymore (made up, or admitted and left to expire).
+     * The frontend catches this 404 and joins again at the back.
+     */
     @GetMapping("/{token}")
     public ResultMessage<QueueTicketDTO> status(@PathVariable("token") String token) {
-        return ResultUtil.data(queueAppService.status(token));
+        return queueAppService.status(token)
+                .map(ResultUtil::data)
+                .orElseGet(() -> ResultUtil.error(404, "Queue ticket not found or expired, please join the queue again"));
     }
 }

@@ -9,6 +9,6 @@ public class TicketDetailDTO {
     private String name;
     private String description;
     private int stockAvailable;
-    private BigDecimal price;        // đã gộp: flash nếu có, không thì gốc
-    private boolean available;       // đã tính sẵn cho FE, FE không phải suy luận
+    private BigDecimal price;        // already resolved: flash price if set, otherwise the original
+    private boolean available;       // precomputed for the frontend, so it does not have to infer it
 }

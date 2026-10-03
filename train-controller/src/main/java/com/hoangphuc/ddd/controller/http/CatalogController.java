@@ -13,11 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * Dữ liệu tra cứu cho trang chủ.
+ * Lookup data for the home page.
  *
- * Gộp hai endpoint vào một controller vì chúng cùng một loại: chỉ đọc, gần
- * như không đổi, không có nghiệp vụ. Tách thành hai class chỉ để mỗi class
- * giữ một hàm là thừa.
+ * Two endpoints in one controller because they are the same kind of thing:
+ * read-only, almost never changing, no business logic. Two classes holding
+ * one method each would be overkill.
  */
 @RestController
 @Slf4j
@@ -29,7 +29,7 @@ public class CatalogController {
     @GetMapping("/stations")
     public ResultMessage<List<StationDTO>> getStations() {
         List<StationDTO> stations = stationAppService.listStations();
-        log.info("[CONTROLLER] getStations | so ga={}", stations.size());
+        log.info("[CONTROLLER] getStations | stations={}", stations.size());
         return ResultUtil.data(stations);
     }
 

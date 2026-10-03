@@ -33,15 +33,15 @@ public class SeatMapAppServiceImpl implements SeatMapAppService {
     private final JourneyPricingService journeyPricingService;
 
     /**
-     * HAI luot xuong DB cho ca so do, du toa nao cung phai ve:
+     * TWO round trips to the DB for the whole seat map, however many carriages:
      *
-     *   1 cau lay khuon mau toa cua doan tau
-     *   1 cau lay TOAN BO ghe cua hang cho do, roi gom theo toa trong RAM
+     *   1 query for the train's carriage templates
+     *   1 query for ALL seats of that seat class, then grouped by carriage in memory
      *
-     * Khong lap "voi moi toa, lay ghe cua toa do": mot toa nam co 5 toa, moi
-     * toa mot cau la 5 luot; man hinh nay nguoi ta bam qua lai giua cac hang
-     * cho lien tuc nen so luot nhan len rat nhanh. Gom trong RAM re hon nhieu
-     * vi du lieu tra ve van la tung ay dong.
+     * No loop of "for each carriage, load its seats": a sleeper class has 5
+     * carriages, one query each is 5 round trips; people click back and forth
+     * between seat classes on this screen, so the count multiplies quickly.
+     * Grouping in memory is much cheaper because the rows returned are the same.
      */
     @Override
     public Optional<List<CarriageDTO>> carriages(Long tripId, String seatClass,
@@ -72,7 +72,7 @@ public class SeatMapAppServiceImpl implements SeatMapAppService {
         }
         result.sort(Comparator.comparingInt(CarriageDTO::getNumber));
 
-        log.info("[SO-DO] chuyen={} hang={} | {} toa", tripId, seatClass, result.size());
+        log.info("[SEAT-MAP] trip={} class={} | {} carriages", tripId, seatClass, result.size());
         return Optional.of(result);
     }
 
@@ -87,7 +87,7 @@ public class SeatMapAppServiceImpl implements SeatMapAppService {
         }
 
         CarriageDTO dto = new CarriageDTO();
-        // Id duy nhat trong pham vi mot chuyen — frontend dung lam key React.
+        // Unique id within a trip — the frontend uses it as the React key.
         dto.setId(trip.getId() + "-C" + carriage.getNumber());
         dto.setNumber(carriage.getNumber());
         dto.setSeatClass(carriage.getSeatClass());

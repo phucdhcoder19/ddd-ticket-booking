@@ -1,4 +1,5 @@
 import { ApiError, type ApiErrorKind } from "@/api/errors";
+import { getQueuePass } from "@/lib/queuePass";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
@@ -12,16 +13,16 @@ export type RetryNotice = {
 export type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
-  /** Huỷ yêu cầu nếu quá thời gian này (ms). Mặc định 12s cho mạng chậm. */
+  /** Cancel the request after this many ms. Default 12s for slow networks. */
   timeoutMs?: number;
   signal?: AbortSignal;
-  /** Số lần thử lại tối đa với lỗi 429/5xx/timeout. Mặc định 3. */
+  /** Max retries for 429/5xx/timeout errors. Default 3. */
   maxRetries?: number;
-  /** Được gọi trước mỗi lần chờ để thử lại — dùng để báo cho người dùng biết. */
+  /** Called before each wait-and-retry — used to let the user know. */
   onRetry?: (notice: RetryNotice) => void;
   /**
-   * Khoá chống gửi trùng. Server dùng key này để bỏ qua request lặp
-   * (double-click, retry sau timeout) — bắt buộc với mọi thao tác trừ tồn kho.
+   * Duplicate-submission key. The server uses it to ignore repeated requests
+   * (double-click, retry after timeout) — required for every stock-deducting action.
    */
   idempotencyKey?: string;
 };
@@ -29,11 +30,12 @@ export type RequestOptions = {
 const RETRYABLE: ApiErrorKind[] = ["OVERLOADED", "SERVER", "TIMEOUT"];
 
 /**
- * Backend bọc MỌI phản hồi trong ResultMessage:
+ * The backend wraps EVERY response in a ResultMessage:
  *   { success, code, message, timestamp, result }
  *
- * và luôn trả HTTP 200 — mã lỗi thật nằm ở trường "code" trong thân, không
- * nằm ở status dòng đầu. Nên không thể tin res.ok, phải mở phong bì ra xem.
+ * and always returns HTTP 200 — the real error code is in the "code" field of
+ * the body, not in the status line. So res.ok cannot be trusted; the envelope
+ * has to be opened.
  */
 type Envelope<T> = {
   success: boolean;
@@ -47,7 +49,7 @@ function isEnvelope(x: unknown): x is Envelope<unknown> {
   return typeof x === "object" && x !== null && "success" in x && "result" in x;
 }
 
-/** Backoff luỹ thừa + jitter: 0.6s, 1.2s, 2.4s (±25%), tôn trọng Retry-After của server. */
+/** Exponential backoff + jitter: 0.6s, 1.2s, 2.4s (±25%), honouring the server's Retry-After. */
 function backoffDelay(attempt: number, retryAfterSeconds?: number): number {
   if (retryAfterSeconds != null) return Math.min(retryAfterSeconds * 1000, 15_000);
   const base = 600 * 2 ** (attempt - 1);
@@ -72,7 +74,8 @@ function kindFromStatus(status: number, code?: string): ApiErrorKind {
   if (status === 410) return "HOLD_EXPIRED";
   if (status === 429) return "OVERLOADED";
   if (status === 400 || status === 422) return "VALIDATION";
-  if (status === 401 || status === 403) return "UNAUTHORIZED";
+  if (status === 401) return "UNAUTHORIZED";
+  if (status === 403) return "NOT_ADMITTED";
   if (status === 404) return "NOT_FOUND";
   if (status >= 500) return "SERVER";
   return "UNKNOWN";
@@ -84,12 +87,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      throw new ApiError("OFFLINE", "Thiết bị đang ngoại tuyến");
+      throw new ApiError("OFFLINE", "The device is offline");
     }
     const timeoutCtl = new AbortController();
     const timer = setTimeout(() => timeoutCtl.abort(new DOMException("Timeout", "TimeoutError")), timeoutMs);
-    // Người dùng huỷ (rời màn hình) và hết giờ chờ là hai nguồn huỷ khác nhau
+    // The user cancelling (leaving the screen) and the timeout are two different abort sources
     const composed = signal ? AbortSignal.any([signal, timeoutCtl.signal]) : timeoutCtl.signal;
+    const queuePass = getQueuePass();
 
     try {
       const res = await fetch(`${BASE_URL}${path}`, {
@@ -97,6 +101,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         headers: {
           "Content-Type": "application/json",
           ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+          // Attach the admission pass to EVERY request, not just /holds: the API
+          // layer does not need to know which endpoints require it, the server decides.
+          ...(queuePass ? { "X-Queue-Token": queuePass } : {}),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: composed,
@@ -107,14 +114,14 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         if (res.status === 204) return undefined as T;
         const payload: unknown = await res.json();
 
-        // Không phải phong bì (ví dụ server khác) -> trả thẳng
+        // Not an envelope (e.g. a different server) -> return as is
         if (!isEnvelope(payload)) return payload as T;
 
         if (payload.success) return payload.result as T;
 
-        // success = false -> lỗi nghiệp vụ, đọc mã trong thân
+        // success = false -> business error, read the code from the body
         const kind = kindFromStatus(payload.code);
-        const err = new ApiError(kind, payload.message ?? "Yêu cầu không thành công", {
+        const err = new ApiError(kind, payload.message ?? "The request did not succeed", {
           status: payload.code,
         });
         if (!RETRYABLE.includes(kind) || attempt === maxAttempts) throw err;
@@ -141,21 +148,21 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     } catch (e) {
       clearTimeout(timer);
       if (e instanceof ApiError) throw e;
-      // Người dùng chủ động huỷ — không phải lỗi, không retry
+      // The user cancelled on purpose — not an error, no retry
       if (signal?.aborted) throw e;
       const isTimeout = e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError");
       const kind: ApiErrorKind = isTimeout ? "TIMEOUT" : "OFFLINE";
       if (attempt === maxAttempts) {
-        throw new ApiError(kind, isTimeout ? "Yêu cầu quá thời gian chờ" : "Không kết nối được máy chủ");
+        throw new ApiError(kind, isTimeout ? "The request timed out" : "Could not connect to the server");
       }
       const delay = backoffDelay(attempt);
       onRetry?.({ attempt, maxAttempts, delayMs: delay, kind });
       await sleep(delay, signal);
     }
   }
-  throw new ApiError("UNKNOWN", "Không thể hoàn tất yêu cầu");
+  throw new ApiError("UNKNOWN", "The request could not be completed");
 }
 
-/** Khoá idempotency cho một thao tác — giữ nguyên qua các lần retry của cùng một hành động. */
+/** Idempotency key for one action — stays the same across retries of that action. */
 export const newIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() ?? `k_${Date.now()}_${Math.random().toString(36).slice(2)}`;

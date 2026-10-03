@@ -1,12 +1,12 @@
 package com.hoangphuc.ddd.application.service.hold;
 
 /**
- * It nhat mot trong nhung cho khach chon da bi nguoi khac giu mat.
+ * At least one of the seats the customer picked was taken by someone else.
  *
- * La RuntimeException chu khong phai gia tri tra ve, vi no duoc nem TU TRONG
- * transaction: chi co nem ra Spring moi ROLLBACK. Tra ve null thi transaction
- * commit binh thuong, de lai mot luot giu cho giu duoc 2/3 ghe — dung cai
- * ma nghiep vu nay khong cho phep.
+ * A RuntimeException rather than a return value, because it is thrown FROM
+ * INSIDE the transaction: only throwing makes Spring ROLL BACK. Returning null
+ * would commit normally and leave a hold with 2 of 3 seats — exactly what this
+ * business does not allow.
  */
 public class SeatUnavailableException extends RuntimeException {
 

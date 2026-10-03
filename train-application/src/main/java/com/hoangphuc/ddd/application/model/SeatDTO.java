@@ -2,28 +2,28 @@ package com.hoangphuc.ddd.application.model;
 
 import lombok.Data;
 
-/** Mot cho tren so do toa. Ten truong khop dung kieu Seat cua frontend. */
+/** One place on a carriage seat map. Field names match the frontend Seat type exactly. */
 @Data
 public class SeatDTO {
 
-    /** Ma cho, vi du "C3-12". Frontend dung chinh chuoi nay lam id khi giu cho. */
+    /** Seat code, e.g. "C3-12". The frontend uses this very string as the id when holding. */
     private String id;
 
-    /** So hieu in tren ve: "12". */
+    /** Number printed on the ticket: "12". */
     private String label;
 
     private int row;
     private int col;
 
     /**
-     * Toa nam: so khoang. Toa ngoi: NULL.
+     * Sleeper carriage: compartment number. Seating carriage: NULL.
      *
-     * Gui null chu khong gui 0: frontend khai bao compartment?, nghia la
-     * "toa nay khong co khai niem khoang". So 0 la mot khoang ten la 0.
+     * Null rather than 0: the frontend declares compartment?, meaning "this
+     * carriage has no notion of compartments". 0 would be a compartment named 0.
      */
     private Integer compartment;
 
-    /** Tang giuong 1..3. Toa ngoi: NULL. */
+    /** Berth level 1..3. Seating carriage: NULL. */
     private Integer berthLevel;
 
     /** available | held | sold */

@@ -5,13 +5,13 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 /**
- * Đoàn tàu — KHUÔN MẪU, không gắn với ngày nào.
+ * A train service — a TEMPLATE, not tied to any date.
  *
- * SE1 chạy 20:25 mỗi ngày. Bản thân "SE1" không phải một chuyến đi cụ thể;
- * nó là lịch. Chuyến đi cụ thể là Trip = Train + ngày.
+ * SE1 departs at 20:25 every day. "SE1" itself is not a specific journey;
+ * it is a schedule. A specific journey is a Trip = Train + date.
  *
- * Tách khuôn mẫu khỏi lần chạy là cách tránh nhân bản dữ liệu: đổi giờ chạy
- * của SE1 thì sửa một dòng, không phải sửa 60 dòng của 60 ngày.
+ * Separating the template from each run avoids duplicated data: changing
+ * SE1's departure time edits one row, not 60 rows for 60 days.
  */
 @Data
 @Accessors(chain = true)
@@ -30,9 +30,9 @@ public class Train {
     private int departHour;
     private int departMinute;
 
-    /** Tốc độ trung bình km/h — dùng để ước lượng giờ tới. */
+    /** Average speed in km/h — used to estimate the arrival time. */
     private int speedKmh;
 
-    /** 0 = ngừng khai thác, 1 = đang chạy */
+    /** 0 = out of service, 1 = running */
     private int status;
 }

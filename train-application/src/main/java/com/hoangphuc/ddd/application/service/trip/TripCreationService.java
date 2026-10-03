@@ -19,17 +19,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Ghi chuyến + toàn bộ ghế trong MỘT transaction.
+ * Writes the trip + all of its seats in ONE transaction.
  *
- * Tách khỏi TripProvisionService vì đúng hai lý do đã gặp ở
- * OrderTransactionService và HoldTransactionService:
+ * Kept apart from TripProvisionService for exactly the two reasons seen in
+ * OrderTransactionService and HoldTransactionService:
  *
- *   1. @Transactional chỉ ăn khi được gọi TỪ NGOÀI class, qua proxy Spring.
- *      Để chung một class rồi gọi this.createTripWithSeats(...) là mất
- *      transaction, lặng lẽ, không báo lỗi.
- *   2. Ở đây còn một hệ quả nặng hơn: mất transaction thì crash giữa chừng
- *      để lại dòng trip RỖNG không có ghế. Và vì lần sau tìm thấy trip đó,
- *      hệ thống sẽ không bao giờ sinh lại ghế nữa — chuyến chết vĩnh viễn.
+ *   1. @Transactional only works when called FROM OUTSIDE the class, through
+ *      the Spring proxy. Putting it in the same class and calling
+ *      this.createTripWithSeats(...) silently loses the transaction.
+ *   2. Here the consequence is worse: without a transaction, a crash midway
+ *      leaves an EMPTY trip row with no seats. And because the next search
+ *      finds that trip, the system never generates seats again — the trip is
+ *      dead forever.
  */
 @Service
 @Slf4j
@@ -55,7 +56,7 @@ public class TripCreationService {
         }
         seatRepository.saveAll(seats);
 
-        log.info("[TRIP] sinh chuyen | tau={} ngay={} toa={} ghe={}",
+        log.info("[TRIP] trip provisioned | train={} date={} carriages={} seats={}",
                 train.getCode(), serviceDate, carriages.size(), seats.size());
         return trip;
     }

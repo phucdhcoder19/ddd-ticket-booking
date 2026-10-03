@@ -11,30 +11,31 @@ import java.util.List;
 @Data
 public class CreateHoldRequest {
 
-    @NotNull(message = "tripId khong duoc trong")
+    @NotNull(message = "tripId is required")
     private Long tripId;
 
-    @NotBlank(message = "seatClass khong duoc trong")
+    @NotBlank(message = "seatClass is required")
     private String seatClass;
 
     /**
-     * Danh sach ma cho: ["C11-3", "C11-4"].
+     * Seat codes: ["C11-3", "C11-4"].
      *
-     * Toi da 4 cho mot luot — gioi han nghiep vu chong dau co, va cung la
-     * gioi han ky thuat: cang nhieu ghe trong mot lan thi xac suat dung do
-     * voi nguoi khac cang cao, ma nghiep vu nay hong mot ghe la hong ca luot.
+     * At most 4 seats per hold — a business limit against scalpers, and also a
+     * technical one: the more seats in one request, the more likely it collides
+     * with someone else, and in this business one lost seat fails the whole hold.
      */
-    @NotEmpty(message = "phai chon it nhat 1 cho")
-    @Size(max = 4, message = "moi luot giu toi da 4 cho")
+    @NotEmpty(message = "pick at least 1 seat")
+    @Size(max = 4, message = "a hold has at most 4 seats")
     private List<String> seatIds;
 
     /**
-     * Hanh trinh cua khach. Phai gui len vi GIA phu thuoc quang duong:
-     * cung mot giuong tang 1 toa 11, Ha Noi - Vinh khac han Ha Noi - Sai Gon.
+     * The passenger's journey. Required because the PRICE depends on distance:
+     * the same lower berth in carriage 11 costs very differently on
+     * Hanoi - Vinh and Hanoi - Saigon.
      */
-    @NotBlank(message = "ga di khong duoc trong")
+    @NotBlank(message = "departure station is required")
     private String from;
 
-    @NotBlank(message = "ga den khong duoc trong")
+    @NotBlank(message = "arrival station is required")
     private String to;
 }

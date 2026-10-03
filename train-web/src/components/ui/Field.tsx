@@ -2,21 +2,21 @@ import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttribu
 import { cn } from "@/lib/cn";
 
 /**
- * Ô nhập liệu có nhãn, gợi ý và báo lỗi.
+ * An input with a label, hint and error message.
  *
- * Quy ước accessibility dùng chung cho cả form:
- *  - Nhãn luôn hiện (không dùng placeholder thay nhãn — người lớn tuổi hay
- *    quên trường đang nhập là gì khi placeholder biến mất).
- *  - Lỗi gắn với ô qua aria-describedby + aria-invalid, và có role="alert"
- *    để trình đọc màn hình đọc ngay khi xuất hiện.
- *  - Lỗi báo bằng cả màu ĐỎ lẫn biểu tượng + chữ, không chỉ dựa vào màu.
+ * Accessibility conventions shared by every form:
+ *  - The label is always visible (no placeholder instead of a label — older
+ *    people often forget what a field is for once the placeholder disappears).
+ *  - Errors are linked to the field via aria-describedby + aria-invalid, and
+ *    have role="alert" so screen readers announce them as soon as they appear.
+ *  - Errors use RED plus an icon + text, never colour alone.
  */
 type BaseProps = {
   label: string;
   hint?: string;
   error?: string | null;
   required?: boolean;
-  /** Nhãn phụ bên phải, ví dụ "Không bắt buộc" */
+  /** Secondary label on the right, e.g. "Optional" */
   trailingLabel?: ReactNode;
 };
 
@@ -28,15 +28,15 @@ export function Field({
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <label htmlFor={htmlFor} className="text-sm font-semibold text-ink-800">
           {label}
-          {required && <span className="ml-1 text-son-600" aria-hidden>*</span>}
-          {required && <span className="sr-only"> (bắt buộc)</span>}
+          {required && <span className="ml-1 text-brand-600" aria-hidden>*</span>}
+          {required && <span className="sr-only"> (required)</span>}
         </label>
         {trailingLabel && <span className="text-xs text-ink-500">{trailingLabel}</span>}
       </div>
       {children}
       <div id={describedById} className="min-h-5">
         {error ? (
-          <p role="alert" className="mt-1 flex items-start gap-1 text-sm font-medium text-son-700">
+          <p role="alert" className="mt-1 flex items-start gap-1 text-sm font-medium text-brand-700">
             <span aria-hidden>⚠</span>
             <span>{error}</span>
           </p>
@@ -68,7 +68,7 @@ export function TextInput({ label, hint, error, required, trailingLabel, classNa
         aria-describedby={describedById}
         className={cn(
           CONTROL_BASE,
-          error ? "border-son-500 bg-son-50/40" : "border-ink-200 hover:border-ink-300 focus:border-son-500",
+          error ? "border-brand-500 bg-brand-50/40" : "border-ink-200 hover:border-ink-300 focus:border-brand-500",
           className,
         )}
       />
@@ -97,7 +97,7 @@ export function SelectInput({
           className={cn(
             CONTROL_BASE,
             "appearance-none pr-10",
-            error ? "border-son-500 bg-son-50/40" : "border-ink-200 hover:border-ink-300 focus:border-son-500",
+            error ? "border-brand-500 bg-brand-50/40" : "border-ink-200 hover:border-ink-300 focus:border-brand-500",
             className,
           )}
         >

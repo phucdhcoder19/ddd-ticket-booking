@@ -6,28 +6,28 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * Đợt mở bán hiện tại — nuôi cái đồng hồ đếm ngược ở trang chủ.
+ * The current sale window — feeds the countdown on the home page.
  */
 @Data
 public class SaleWindowDTO {
 
-    /** Thời điểm mở bán. Nếu đã mở rồi thì đây là mốc đã qua. */
+    /** When the sale opens. If it is already open, this moment is in the past. */
     private LocalDateTime opensAt;
 
     private String label;
 
     /**
-     * BẪY LOMBOK + JACKSON: field "isOpen" kiểu boolean sinh getter isOpen(),
-     * Jackson cắt tiền tố "is" và đặt tên JSON thành "open" — frontend đọc
-     * res.isOpen sẽ ra undefined mà không có lỗi nào báo.
-     * @JsonProperty ép giữ đúng tên.
+     * LOMBOK + JACKSON TRAP: a boolean field "isOpen" generates the getter isOpen(),
+     * Jackson strips the "is" prefix and names the JSON property "open" — a
+     * frontend reading res.isOpen gets undefined with no error anywhere.
+     * @JsonProperty forces the right name.
      */
     @JsonProperty("isOpen")
     private boolean isOpen;
 
     /**
-     * Giờ của SERVER. Đồng hồ đếm ngược phải trừ theo mốc này, không theo
-     * giờ máy khách — máy khách chỉnh được giờ, và có thể ngủ rồi thức dậy.
+     * SERVER time. The countdown must count from this moment, not the client's
+     * clock — the client can change its clock, and can sleep and wake up.
      */
     private LocalDateTime serverNow;
 }

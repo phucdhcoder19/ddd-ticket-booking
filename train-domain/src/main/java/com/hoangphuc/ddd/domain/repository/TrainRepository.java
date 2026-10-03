@@ -8,11 +8,11 @@ import java.util.Optional;
 
 public interface TrainRepository {
 
-    /** Cac doan tau dang khai thac, sap theo gio khoi hanh. */
+    /** Trains in service, sorted by departure time. */
     List<Train> findActive();
 
     Optional<Train> findById(Long trainId);
 
-    /** So do toa cua mot doan tau — khuon mau, khong theo ngay. */
+    /** Carriage layout of a train — a template, not tied to a date. */
     List<TrainCarriage> findCarriages(Long trainId);
 }

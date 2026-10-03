@@ -2,15 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { newIdempotencyKey } from "@/lib/http";
 
 /**
- * Chặn gửi trùng cho các nút "Đặt vé" / "Thanh toán".
+ * Prevents duplicate submissions on the "Book" / "Pay" buttons.
  *
- * Ba lớp bảo vệ, vì chỉ disable nút là chưa đủ:
- *  1. Khoá đồng bộ (ref) — chặn ngay cú click thứ hai trong cùng một tick,
- *     trước cả khi React kịp render lại nút ở trạng thái disabled.
- *  2. Cờ `pending` để UI hiện spinner và disable nút.
- *  3. Idempotency-Key cố định cho suốt một lần thao tác (giữ nguyên qua các
- *     lần retry), để server nhận request lặp thì trả lại kết quả cũ chứ không
- *     trừ tồn kho lần nữa. Chỉ sinh key mới khi lần trước đã thất bại.
+ * Three layers of protection, because only disabling the button is not enough:
+ *  1. A synchronous lock (ref) — blocks the second click in the same tick,
+ *     before React has even re-rendered the button as disabled.
+ *  2. A `pending` flag so the UI shows a spinner and disables the button.
+ *  3. A fixed Idempotency-Key for the whole action (kept across retries), so
+ *     when the server receives a repeated request it returns the previous
+ *     result instead of deducting stock again. A new key is only generated
+ *     after the previous action succeeded.
  */
 export function useSubmitLock<Args extends unknown[], R>(
   action: (args: { idempotencyKey: string }, ...rest: Args) => Promise<R>,
@@ -29,16 +30,16 @@ export function useSubmitLock<Args extends unknown[], R>(
 
   const submit = useCallback(
     async (...rest: Args): Promise<R | undefined> => {
-      if (lockRef.current) return undefined; // bấm trùng — bỏ qua im lặng
+      if (lockRef.current) return undefined; // duplicate click — ignore silently
       lockRef.current = true;
       setPending(true);
       keyRef.current ??= newIdempotencyKey();
       try {
         const result = await action({ idempotencyKey: keyRef.current }, ...rest);
-        keyRef.current = null; // thành công: thao tác sau là thao tác mới
+        keyRef.current = null; // success: the next action is a new one
         return result;
-        // Lỗi thì KHÔNG xoá key: người dùng bấm "Thử lại" vẫn là cùng một thao tác,
-        // nên server nhận ra request lặp và không trừ tồn kho lần nữa.
+        // On error the key is NOT cleared: pressing "Try again" is still the same
+        // action, so the server recognises the repeat and does not deduct stock again.
       } finally {
         lockRef.current = false;
         if (mountedRef.current) setPending(false);
@@ -47,7 +48,7 @@ export function useSubmitLock<Args extends unknown[], R>(
     [action],
   );
 
-  /** Gọi khi người dùng đổi hẳn lựa chọn (đổi ghế, đổi phương thức) */
+  /** Call when the user changes their choice entirely (other seats, other payment method) */
   const resetKey = useCallback(() => {
     keyRef.current = null;
   }, []);

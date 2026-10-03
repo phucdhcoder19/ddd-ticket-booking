@@ -1,6 +1,6 @@
 /**
- * Âm lịch Việt Nam (múi giờ +7) — thuật toán Hồ Ngọc Đức.
- * Dùng để hiển thị ngày âm trên lịch chọn ngày đi và đánh dấu cao điểm Tết.
+ * Lunar calendar (UTC+7 time zone) — Ho Ngoc Duc's algorithm.
+ * Used to show lunar dates on the departure date picker and mark the Lunar New Year peak.
  */
 const PI = Math.PI;
 const TZ = 7;
@@ -114,10 +114,10 @@ export function solarToLunar(date: Date): LunarDate {
   return { day: lunarDay, month: lunarMonth, year: lunarYear, leap };
 }
 
-/** "28/12 âm" hoặc "Mùng 3 Tết" */
+/** "28/12" (lunar) or "NY 3" (3rd day of the new year) */
 export function lunarLabel(l: LunarDate): string {
-  if (l.month === 1 && l.day <= 10) return `Mùng ${l.day}`;
-  return `${l.day}/${l.month}${l.leap ? " N" : ""}`;
+  if (l.month === 1 && l.day <= 10) return `NY ${l.day}`;
+  return `${l.day}/${l.month}${l.leap ? " L" : ""}`;
 }
 
 export type PeakLevel = "none" | "high" | "peak";
@@ -127,14 +127,15 @@ export type DayInfo = {
   lunar: LunarDate;
   lunarText: string;
   peak: PeakLevel;
-  /** Nhãn ngắn hiện trên ô lịch, ví dụ "29 Tết", "Mùng 4" */
+  /** Short label shown on the calendar cell, e.g. "29/12 lunar", "NY 4" */
   peakLabel?: string;
 };
 
 /**
- * Phân loại cao điểm Tết theo ngày âm, không hard-code ngày dương:
- *  - peak : 25 tháng Chạp → mùng 1  (sóng về quê) và mùng 3 → mùng 6 (sóng quay lại)
- *  - high : 20–24 tháng Chạp và mùng 7 → mùng 12
+ * Classify the Lunar New Year peak by lunar date, without hard-coding solar dates:
+ *  - peak : 25th of the 12th lunar month → New Year's Day (the trip home) and
+ *           days 3 → 6 of the new year (the trip back)
+ *  - high : 20th–24th of the 12th lunar month and days 7 → 12 of the new year
  */
 export function getDayInfo(date: Date): DayInfo {
   const lunar = solarToLunar(date);
@@ -145,20 +146,20 @@ export function getDayInfo(date: Date): DayInfo {
   if (month === 12) {
     if (day >= 25) {
       peak = "peak";
-      peakLabel = `${day} Tết`;
+      peakLabel = `${day}/12 lunar`;
     } else if (day >= 20) {
       peak = "high";
     }
   } else if (month === 1) {
     if (day <= 1) {
       peak = "peak";
-      peakLabel = "Mùng 1";
+      peakLabel = "New Year";
     } else if (day >= 3 && day <= 6) {
       peak = "peak";
-      peakLabel = `Mùng ${day}`;
+      peakLabel = `NY ${day}`;
     } else if (day === 2) {
       peak = "high";
-      peakLabel = "Mùng 2";
+      peakLabel = "NY 2";
     } else if (day <= 12) {
       peak = "high";
     }
@@ -166,11 +167,11 @@ export function getDayInfo(date: Date): DayInfo {
   return { date, lunar, lunarText: lunarLabel(lunar), peak, peakLabel };
 }
 
-/** Hệ số giá cao điểm — dùng chung với mock để giá hiển thị nhất quán */
+/** Peak price factor — shared with the mock so displayed prices stay consistent */
 export const peakSurcharge: Record<PeakLevel, number> = { none: 1, high: 1.15, peak: 1.35 };
 
 export const peakText: Record<PeakLevel, string> = {
-  none: "Ngày thường",
-  high: "Đông khách",
-  peak: "Cao điểm Tết",
+  none: "Regular day",
+  high: "Busy",
+  peak: "New Year peak",
 };

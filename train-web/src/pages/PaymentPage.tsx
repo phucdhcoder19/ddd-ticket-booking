@@ -14,25 +14,26 @@ import { useToast } from "@/store/ToastContext";
 import { formatDate, formatTime, formatVnd, maskIdNumber } from "@/lib/format";
 import { friendlyMessage } from "@/api/errors";
 import { cn } from "@/lib/cn";
+import { clearQueuePass } from "@/lib/queuePass";
 
 type Phase = "choose" | "processing" | "success" | "failed" | "expired";
 
 const METHODS: Array<{ code: PaymentMethod; icon: string; note: string }> = [
-  { code: "VNPAY", icon: "🏦", note: "Quét QR hoặc mở ứng dụng ngân hàng" },
-  { code: "MOMO", icon: "💗", note: "Thanh toán bằng số dư ví MoMo" },
-  { code: "BANK_CARD", icon: "💳", note: "Thẻ ATM nội địa, Visa, Mastercard" },
+  { code: "VNPAY", icon: "🏦", note: "Scan a QR code or open your banking app" },
+  { code: "MOMO", icon: "💗", note: "Pay with your MoMo wallet balance" },
+  { code: "BANK_CARD", icon: "💳", note: "Domestic ATM card, Visa, Mastercard" },
 ];
 
 /**
- * Màn 6 — Thanh toán.
+ * Screen 6 — Payment.
  *
- * Trạng thái "đang xử lý" là chỗ dễ hỏng nhất: người dùng thấy màn hình đứng
- * yên sẽ bấm lại hoặc F5, dẫn tới trừ tiền hai lần. Cách xử lý:
- *  - Nút bấm khoá bằng useSubmitLock + Idempotency-Key, gửi trùng cũng vô hại.
- *  - Trong lúc chờ, màn hình CHIẾM TRỌN và giải thích rõ đang chờ ngân hàng,
- *    kèm cảnh báo không tải lại trang; không còn nút nào để bấm nhầm.
- *  - Trạng thái đơn được hỏi lại theo chu kỳ (poll), vì kết quả thật đến từ
- *    webhook của cổng thanh toán chứ không từ phản hồi của nút bấm.
+ * The "processing" state is where things break most easily: users who see a
+ * frozen screen press again or F5, and get charged twice. How it is handled:
+ *  - The button is locked with useSubmitLock + Idempotency-Key, so duplicates are harmless.
+ *  - While waiting, the screen TAKES OVER and clearly says we are waiting for
+ *    the bank, with a warning not to reload; there are no buttons left to misclick.
+ *  - The order status is polled, because the real result comes from the
+ *    payment gateway's webhook, not from the button's response.
  */
 export function PaymentPage() {
   const navigate = useNavigate();
@@ -45,10 +46,10 @@ export function PaymentPage() {
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!hold || !trip) navigate("/chuyen-tau", { replace: true });
+    if (!hold || !trip) navigate("/trips", { replace: true });
   }, [hold, trip, navigate]);
 
-  // Chặn rời trang khi đang chờ ngân hàng trả kết quả
+  // Block leaving the page while waiting for the bank's result
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (phase === "processing") e.preventDefault();
@@ -67,12 +68,12 @@ export function PaymentPage() {
   );
 
   const handleExpire = () => {
-    if (phase === "success") return; // đã thanh toán xong thì đồng hồ không còn ý nghĩa
+    if (phase === "success") return; // once paid, the timer no longer matters
     setPhase("expired");
     clearHold();
   };
 
-  /** Hỏi lại trạng thái đơn cho tới khi có kết quả cuối cùng */
+  /** Poll the order status until there is a final result */
   const pollOrder = (id: string, attempt = 0) => {
     pollRef.current = window.setTimeout(async () => {
       try {
@@ -81,6 +82,9 @@ export function PaymentPage() {
         if (next.status === "PAID") {
           setPhase("success");
           setOrderId(null);
+          // The server freed the waiting room slot when the order was created. Drop the
+          // pass in the browser too: buying more tickets means queueing again, which is fair to those waiting.
+          clearQueuePass();
           return;
         }
         if (next.status === "FAILED") {
@@ -91,15 +95,15 @@ export function PaymentPage() {
           handleExpire();
           return;
         }
-        // Quá 60 lần (~2 phút) thì dừng hỏi và mời người dùng kiểm tra lại
+        // After 60 attempts (~2 minutes), stop polling and ask the user to check
         if (attempt > 60) {
           setPhase("failed");
-          setOrder({ ...next, failureReason: "Ngân hàng chưa phản hồi. Nếu tài khoản đã bị trừ tiền, tiền sẽ được hoàn trong 3 ngày làm việc." });
+          setOrder({ ...next, failureReason: "The bank has not responded yet. If your account was charged, the money will be refunded within 3 business days." });
           return;
         }
         pollOrder(id, attempt + 1);
       } catch {
-        // Lỗi mạng khi đang chờ: cứ hỏi tiếp, KHÔNG báo thất bại vì đơn có thể đã thành công
+        // Network error while waiting: keep polling, do NOT report failure, the order may have succeeded
         pollOrder(id, attempt + 1);
       }
     }, 2000);
@@ -128,7 +132,7 @@ export function PaymentPage() {
   });
 
   const retryPayment = () => {
-    resetKey();          // lần thử mới là một giao dịch mới
+    resetKey();          // a new attempt is a new transaction
     setOrder(null);
     setPhase("choose");
   };
@@ -139,102 +143,102 @@ export function PaymentPage() {
 
   if (phase === "expired") return <HoldExpiredDialog open tripId={trip.id} />;
 
-  // ── Đang xử lý ────────────────────────────────────────────────────────────
+  // ── Processing ────────────────────────────────────────────────────────────
   if (phase === "processing") {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 text-center" role="status" aria-live="polite">
-        <Spinner className="size-12 text-son-600" />
-        <h1 className="text-xl font-bold">Đang xử lý thanh toán</h1>
+        <Spinner className="size-12 text-brand-600" />
+        <h1 className="text-xl font-bold">Processing your payment</h1>
         <p className="max-w-sm text-ink-700">
-          Chúng tôi đang chờ {PAYMENT_LABEL[method]} xác nhận giao dịch. Việc này thường mất vài giây.
+          We are waiting for {PAYMENT_LABEL[method]} to confirm the transaction. This usually takes a few seconds.
         </p>
-        <div className="mt-2 w-full max-w-sm rounded-2xl border-2 border-mai-300 bg-mai-50 px-4 py-3 text-left">
-          <p className="font-bold text-ink-900">Đừng tải lại trang</p>
+        <div className="mt-2 w-full max-w-sm rounded-2xl border-2 border-accent-300 bg-accent-50 px-4 py-3 text-left">
+          <p className="font-bold text-ink-900">Do not reload the page</p>
           <p className="mt-1 text-sm text-ink-700">
-            Nếu bạn tải lại hoặc bấm thanh toán lần nữa, giao dịch vẫn chỉ được ghi nhận một lần, nhưng bạn sẽ
-            không thấy được kết quả. Xin chờ thêm một chút.
+            If you reload or press pay again, the transaction is still recorded only once, but you will not
+            see the result. Please wait a moment longer.
           </p>
         </div>
-        {order && <p className="tnum text-sm text-ink-500">Mã đơn: {order.code}</p>}
+        {order && <p className="tnum text-sm text-ink-500">Order code: {order.code}</p>}
       </div>
     );
   }
 
-  // ── Thành công ────────────────────────────────────────────────────────────
+  // ── Success ───────────────────────────────────────────────────────────────
   if (phase === "success" && order) {
     return (
       <div className="flex flex-col items-center gap-4 py-8 text-center">
         <span aria-hidden className="grid size-20 place-items-center rounded-full bg-ok-50 text-4xl">✓</span>
         <div>
-          <h1 className="text-2xl font-bold text-ink-900">Đặt vé thành công</h1>
+          <h1 className="text-2xl font-bold text-ink-900">Booking confirmed</h1>
           <p className="mt-1 text-ink-700">
-            {hold.items.length} vé tàu {trip.trainCode} đã được xuất. Chúc bạn về quê ăn Tết bình an!
+            {hold.items.length} {hold.items.length === 1 ? "ticket" : "tickets"} for train {trip.trainCode} {hold.items.length === 1 ? "has" : "have"} been issued. Have a safe trip home for the holidays!
           </p>
         </div>
         <dl className="w-full rounded-2xl border border-ink-200 bg-white p-4 text-left">
-          <Row label="Mã đơn hàng" value={<span className="tnum font-bold">{order.code}</span>} />
-          <Row label="Số tiền đã thanh toán" value={<span className="tnum font-bold text-son-700">{formatVnd(order.totalAmount)}</span>} />
-          <Row label="Phương thức" value={PAYMENT_LABEL[method]} />
-          <Row label="Chuyến tàu" value={`${trip.trainCode} · ${formatTime(trip.departAt)} ${formatDate(trip.departAt)}`} />
+          <Row label="Order code" value={<span className="tnum font-bold">{order.code}</span>} />
+          <Row label="Amount paid" value={<span className="tnum font-bold text-brand-700">{formatVnd(order.totalAmount)}</span>} />
+          <Row label="Payment method" value={PAYMENT_LABEL[method]} />
+          <Row label="Train" value={`${trip.trainCode} · ${formatTime(trip.departAt)} ${formatDate(trip.departAt)}`} />
         </dl>
         <p className="text-sm text-ink-600">
-          Mã QR của từng vé nằm trong mục <strong>Vé của tôi</strong>. Bạn nhớ chụp màn hình phòng khi ga không có sóng.
+          The QR code of each ticket is under <strong>My tickets</strong>. Remember to take a screenshot in case there is no signal at the station.
         </p>
         <div className="flex w-full flex-col gap-2">
-          <Button size="lg" fullWidth onClick={() => navigate("/ve-cua-toi")}>
-            Xem vé của tôi
+          <Button size="lg" fullWidth onClick={() => navigate("/my-tickets")}>
+            View my tickets
           </Button>
           <Button variant="secondary" fullWidth onClick={() => navigate("/")}>
-            Đặt thêm vé khác
+            Book more tickets
           </Button>
         </div>
       </div>
     );
   }
 
-  // ── Thất bại ──────────────────────────────────────────────────────────────
+  // ── Failed ────────────────────────────────────────────────────────────────
   if (phase === "failed") {
     const holdStillAlive = new Date(hold.expiresAt).getTime() > Date.now();
     return (
       <div className="flex flex-col gap-4">
         <HoldBar hold={hold} total={total} onExpire={handleExpire} />
-        <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-son-200 bg-son-50 px-5 py-8 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-brand-200 bg-brand-50 px-5 py-8 text-center">
           <span aria-hidden className="text-4xl">😔</span>
-          <h1 className="text-xl font-bold text-ink-900">Thanh toán chưa thành công</h1>
+          <h1 className="text-xl font-bold text-ink-900">Payment did not go through</h1>
           <p className="max-w-sm text-ink-700">
-            {order?.failureReason ?? "Giao dịch không hoàn tất. Tài khoản của bạn chưa bị trừ tiền."}
+            {order?.failureReason ?? "The transaction was not completed. Your account has not been charged."}
           </p>
           {holdStillAlive && (
             <p className="rounded-xl bg-white px-3 py-2 text-sm font-medium text-ok-600">
-              Tin tốt: chỗ của bạn vẫn đang được giữ. Bạn thử lại ngay nhé.
+              Good news: your seats are still held. Try again right away.
             </p>
           )}
         </div>
         <div className="flex flex-col gap-2">
           <Button size="lg" fullWidth onClick={retryPayment}>
-            Chọn lại phương thức và thử lại
+            Choose a payment method and try again
           </Button>
-          <Button variant="secondary" fullWidth onClick={() => navigate("/chuyen-tau")}>
-            Huỷ và chọn chuyến khác
+          <Button variant="secondary" fullWidth onClick={() => navigate("/trips")}>
+            Cancel and choose another trip
           </Button>
         </div>
       </div>
     );
   }
 
-  // ── Chọn phương thức ──────────────────────────────────────────────────────
+  // ── Choose a method ───────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4">
       <Stepper current={3} />
       <HoldBar hold={hold} total={total} onExpire={handleExpire} />
 
-      <h1 className="text-xl font-bold">Xác nhận và thanh toán</h1>
+      <h1 className="text-xl font-bold">Review and pay</h1>
 
-      {/* Tóm tắt đơn */}
-      <section aria-labelledby="tom-tat" className="rounded-2xl border border-ink-200 bg-white p-4">
-        <h2 id="tom-tat" className="font-bold text-ink-900">Tóm tắt đơn hàng</h2>
+      {/* Order summary */}
+      <section aria-labelledby="order-summary" className="rounded-2xl border border-ink-200 bg-white p-4">
+        <h2 id="order-summary" className="font-bold text-ink-900">Order summary</h2>
         <div className="mt-2 flex items-center gap-2 border-b border-ink-100 pb-3">
-          <span className="rounded-lg bg-son-600 px-2 py-0.5 text-sm font-bold text-white">{trip.trainCode}</span>
+          <span className="rounded-lg bg-brand-600 px-2 py-0.5 text-sm font-bold text-white">{trip.trainCode}</span>
           <div className="text-sm">
             <div className="font-semibold text-ink-900">{trip.fromStation.name} → {trip.toStation.name}</div>
             <div className="text-ink-600">
@@ -250,11 +254,11 @@ export function PaymentPage() {
             return (
               <li key={item.seatId} className="flex items-start justify-between gap-3 py-3">
                 <div className="min-w-0">
-                  <p className="truncate font-semibold text-ink-900">{p?.fullName || `Hành khách ${i + 1}`}</p>
+                  <p className="truncate font-semibold text-ink-900">{p?.fullName || `Passenger ${i + 1}`}</p>
                   <p className="text-sm text-ink-600">
-                    Toa {item.carriageNumber} · chỗ {item.seatLabel} · {SEAT_CLASS_SHORT[item.seatClass]}
+                    Carriage {item.carriageNumber} · seat {item.seatLabel} · {SEAT_CLASS_SHORT[item.seatClass]}
                   </p>
-                  {p?.idNumber && <p className="tnum text-xs text-ink-500">CCCD {maskIdNumber(p.idNumber)}</p>}
+                  {p?.idNumber && <p className="tnum text-xs text-ink-500">ID {maskIdNumber(p.idNumber)}</p>}
                 </div>
                 <div className="shrink-0 text-right">
                   {price !== item.price && (
@@ -268,16 +272,16 @@ export function PaymentPage() {
         </ul>
 
         <div className="flex items-center justify-between border-t-2 border-ink-200 pt-3">
-          <span className="font-bold text-ink-900">Tổng thanh toán</span>
-          <span className="tnum text-xl font-bold text-son-700">{formatVnd(total)}</span>
+          <span className="font-bold text-ink-900">Total to pay</span>
+          <span className="tnum text-xl font-bold text-brand-700">{formatVnd(total)}</span>
         </div>
       </section>
 
-      {/* Phương thức thanh toán */}
-      <section aria-labelledby="pttt" className="rounded-2xl border border-ink-200 bg-white p-4">
-        <h2 id="pttt" className="font-bold text-ink-900">Phương thức thanh toán</h2>
+      {/* Payment method */}
+      <section aria-labelledby="payment-method" className="rounded-2xl border border-ink-200 bg-white p-4">
+        <h2 id="payment-method" className="font-bold text-ink-900">Payment method</h2>
         <fieldset className="mt-2">
-          <legend className="sr-only">Chọn phương thức thanh toán</legend>
+          <legend className="sr-only">Choose a payment method</legend>
           <div className="flex flex-col gap-2">
             {METHODS.map((m) => {
               const active = method === m.code;
@@ -286,7 +290,7 @@ export function PaymentPage() {
                   key={m.code}
                   className={cn(
                     "flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border-2 px-3 py-2 transition-colors",
-                    active ? "border-son-600 bg-son-50" : "border-ink-200 hover:border-ink-300",
+                    active ? "border-brand-600 bg-brand-50" : "border-ink-200 hover:border-ink-300",
                   )}
                 >
                   <input
@@ -295,7 +299,7 @@ export function PaymentPage() {
                     value={m.code}
                     checked={active}
                     onChange={() => { setMethod(m.code); resetKey(); }}
-                    className="size-5 accent-son-600"
+                    className="size-5 accent-brand-600"
                   />
                   <span aria-hidden className="text-2xl">{m.icon}</span>
                   <span className="min-w-0 flex-1">
@@ -314,17 +318,17 @@ export function PaymentPage() {
           size="lg"
           fullWidth
           loading={pending}
-          loadingText="Đang chuyển tới cổng thanh toán…"
+          loadingText="Redirecting to the payment gateway…"
           onClick={() => void pay().catch(() => {})}
         >
-          Thanh toán {formatVnd(total)}
+          Pay {formatVnd(total)}
         </Button>
         <p className="mt-2 text-center text-xs text-ink-500">
-          Bấm thanh toán nghĩa là bạn đồng ý với điều kiện vận chuyển của ngành đường sắt.
+          By paying you agree to the railway's conditions of carriage.
         </p>
       </StickyActionBar>
 
-      {orderId && <span className="sr-only">Mã đơn đang xử lý {orderId}</span>}
+      {orderId && <span className="sr-only">Order being processed {orderId}</span>}
     </div>
   );
 }

@@ -1,8 +1,9 @@
 /**
- * Mock server chạy trong trình duyệt — mô phỏng đúng hành vi của backend thật:
- * trừ tồn kho nguyên tử (Lua/Redis), giữ chỗ có TTL, 409 khi ghế bị tranh mất,
- * 429 khi quá tải, và độ trễ mạng. Toàn bộ nằm sau `client.ts` nên khi có API
- * thật chỉ cần đổi cờ VITE_USE_MOCK, không đụng vào tầng UI.
+ * In-browser mock server — simulates the real backend's behaviour:
+ * atomic stock deduction (Lua/Redis), holds with a TTL, 409 when a seat is
+ * taken, 429 under overload, and network latency. All of it sits behind
+ * `client.ts`, so switching to the real API only means flipping
+ * VITE_USE_MOCK, without touching the UI layer.
  */
 import { ApiError } from "@/api/errors";
 import type {
@@ -12,18 +13,18 @@ import type {
 import { STATIONS, buildCarriages, buildTrips } from "./db";
 import { formatDate, formatTime } from "@/lib/format";
 
-/** Bảng điều khiển hỗn loạn — chỉnh từ console: `__mock.overloadRate = 0.8` */
+/** Chaos control panel — tweak it from the console: `__mock.overloadRate = 0.8` */
 export const chaos = {
-  /** Tỉ lệ trả 429 cho mỗi request */
+  /** Share of requests answered with 429 */
   overloadRate: 0.12,
-  /** Tỉ lệ request bị treo quá lâu (giả lập mạng chậm) */
+  /** Share of requests that hang too long (simulated slow network) */
   timeoutRate: 0.03,
-  /** Tỉ lệ ghế bị người khác giật mất ngay khi bấm giữ chỗ */
+  /** Share of seats snatched by someone else right when holding */
   seatStealRate: 0.18,
-  /** Tỉ lệ thanh toán thất bại */
+  /** Share of failed payments */
   paymentFailRate: 0.15,
   latencyMs: [180, 650] as [number, number],
-  /** Bật phòng chờ: mô phỏng lượng truy cập đột biến */
+  /** Enable the waiting room: simulates a traffic spike */
   queueEnabled: true,
   holdSeconds: 10 * 60,
 };
@@ -33,20 +34,20 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}`;
 
-/** Các request đã xử lý theo Idempotency-Key — chống double-click / retry gửi trùng */
+/** Requests already handled per Idempotency-Key — guards against double-clicks / duplicate retries */
 const idempotencyStore = new Map<string, unknown>();
 
 async function gate(opts: { canOverload?: boolean } = {}) {
   await sleep(rnd(chaos.latencyMs[0], chaos.latencyMs[1]));
   if (opts.canOverload !== false && Math.random() < chaos.overloadRate) {
-    throw new ApiError("OVERLOADED", "Hệ thống đang quá tải", { status: 429, retryAfter: 1 });
+    throw new ApiError("OVERLOADED", "The system is overloaded", { status: 429, retryAfter: 1 });
   }
   if (Math.random() < chaos.timeoutRate) {
-    await sleep(20_000); // để tầng http tự bắt timeout
+    await sleep(20_000); // let the http layer hit its own timeout
   }
 }
 
-// ── Trạng thái tồn kho trong bộ nhớ ─────────────────────────────────────────
+// ── In-memory stock state ───────────────────────────────────────────────────
 const carriageCache = new Map<string, Carriage[]>();
 const tripCache = new Map<string, Trip[]>();
 const holds = new Map<string, Hold & { passengers?: Passenger[] }>();
@@ -78,8 +79,8 @@ function carriagesFor(tripId: string, seatClass: SeatClassCode): Carriage[] {
 }
 
 /**
- * "Nhịp đập" của phiên mở bán: cứ vài giây lại có người khác giữ/mua chỗ.
- * Nhờ đó sơ đồ ghế và số chỗ còn lại thay đổi thật sự khi người dùng đang xem.
+ * The "heartbeat" of the sale: every few seconds someone else holds or buys seats.
+ * So the seat map and the remaining counts really change while the user is looking.
  */
 function churn() {
   for (const list of carriageCache.values()) {
@@ -90,7 +91,7 @@ function churn() {
         const seat = free[Math.floor(Math.random() * free.length)];
         seat.status = Math.random() < 0.6 ? "held" : "sold";
       }
-      // Một phần chỗ bị giữ sẽ được nhả ra khi người kia bỏ dở
+      // Some held seats are released when the other person gives up
       for (const s of carriage.seats) {
         if (s.status === "held" && Math.random() < 0.06) s.status = "available";
       }
@@ -110,7 +111,7 @@ function churn() {
 }
 if (typeof window !== "undefined") setInterval(churn, 5_000);
 
-// ── Phòng chờ ───────────────────────────────────────────────────────────────
+// ── Waiting room ────────────────────────────────────────────────────────────
 let queueState: { token: string; position: number; total: number; enteredAt: number } | null = null;
 
 // ── API ─────────────────────────────────────────────────────────────────────
@@ -122,12 +123,12 @@ export const mockApi = {
 
   async getSaleWindow(): Promise<SaleWindow> {
     await sleep(rnd(100, 250));
-    // Đợt mở bán tiếp theo: đúng giờ tròn, cách hiện tại hơn một ngày
+    // Next sale: on the hour, a little more than a day from now
     const opensAt = new Date(Date.now() + 26 * 3600_000);
     opensAt.setMinutes(0, 0, 0);
     return {
       opensAt: opensAt.toISOString(),
-      label: "Đợt 2 — vé Tết Đinh Mùi 2027",
+      label: "Sale 2 — Lunar New Year 2027 tickets",
       isOpen: false,
       serverNow: new Date().toISOString(),
     };
@@ -141,7 +142,7 @@ export const mockApi = {
   async getTrip(tripId: string): Promise<Trip> {
     await gate({ canOverload: false });
     const trip = findTrip(tripId);
-    if (!trip) throw new ApiError("NOT_FOUND", "Không tìm thấy chuyến tàu");
+    if (!trip) throw new ApiError("NOT_FOUND", "Trip not found");
     return trip;
   },
 
@@ -151,8 +152,8 @@ export const mockApi = {
   },
 
   /**
-   * Giữ chỗ — tương ứng Lua script trừ tồn kho nguyên tử ở backend.
-   * Hoặc giữ được TOÀN BỘ ghế, hoặc không giữ ghế nào (tránh giữ dở dang).
+   * Hold seats — the counterpart of the backend's atomic stock deduction Lua script.
+   * Either ALL seats are held, or none are (no half-done holds).
    */
   async holdSeats(
     tripId: string,
@@ -172,12 +173,12 @@ export const mockApi = {
     const taken: string[] = [];
     for (const id of seatIds) {
       const entry = all.get(id);
-      if (!entry) throw new ApiError("NOT_FOUND", `Không tìm thấy chỗ ${id}`);
+      if (!entry) throw new ApiError("NOT_FOUND", `Seat ${id} not found`);
       if (entry.seat.status !== "available" || Math.random() < chaos.seatStealRate) taken.push(id);
     }
 
     if (taken.length > 0) {
-      // Đánh dấu ghế đã mất rồi gợi ý chỗ trống gần nhất trong cùng toa
+      // Mark the lost seats, then suggest the nearest free seats in the same carriage
       const suggestions: string[] = [];
       for (const id of taken) {
         const { seat, carriage } = all.get(id)!;
@@ -189,7 +190,7 @@ export const mockApi = {
           .map((s) => s.id);
         suggestions.push(...near);
       }
-      throw new ApiError("SEAT_TAKEN", "Chỗ vừa được hành khách khác giữ", {
+      throw new ApiError("SEAT_TAKEN", "Another passenger just took this seat", {
         status: 409,
         details: { takenSeatIds: taken, suggestedSeatIds: [...new Set(suggestions)].slice(0, 4) },
       });
@@ -223,9 +224,9 @@ export const mockApi = {
   async getHold(holdId: string): Promise<Hold> {
     await sleep(rnd(80, 200));
     const hold = holds.get(holdId);
-    if (!hold) throw new ApiError("HOLD_EXPIRED", "Phiên giữ chỗ không còn hiệu lực", { status: 410 });
+    if (!hold) throw new ApiError("HOLD_EXPIRED", "This hold is no longer valid", { status: 410 });
     if (new Date(hold.expiresAt).getTime() < Date.now()) {
-      throw new ApiError("HOLD_EXPIRED", "Đã hết thời gian giữ chỗ", { status: 410 });
+      throw new ApiError("HOLD_EXPIRED", "The hold has expired", { status: 410 });
     }
     return { ...hold, serverNow: new Date().toISOString() };
   },
@@ -234,7 +235,7 @@ export const mockApi = {
     await sleep(rnd(80, 200));
     const hold = holds.get(holdId);
     if (!hold) return;
-    // Trả chỗ về trạng thái trống để người khác mua được ngay
+    // Put the seats back to free so others can buy them right away
     for (const item of hold.items) {
       for (const c of carriagesFor(hold.tripId, item.seatClass)) {
         const seat = c.seats.find((s) => s.id === item.seatId);
@@ -251,7 +252,7 @@ export const mockApi = {
     await gate({ canOverload: false });
     const hold = holds.get(holdId);
     if (!hold || new Date(hold.expiresAt).getTime() < Date.now()) {
-      throw new ApiError("HOLD_EXPIRED", "Đã hết thời gian giữ chỗ", { status: 410 });
+      throw new ApiError("HOLD_EXPIRED", "The hold has expired", { status: 410 });
     }
     hold.passengers = passengers;
   },
@@ -263,7 +264,7 @@ export const mockApi = {
     await gate();
     const hold = holds.get(holdId);
     if (!hold || new Date(hold.expiresAt).getTime() < Date.now()) {
-      throw new ApiError("HOLD_EXPIRED", "Đã hết thời gian giữ chỗ", { status: 410 });
+      throw new ApiError("HOLD_EXPIRED", "The hold has expired", { status: 410 });
     }
     void method;
     const total = hold.items.reduce((s, i) => s + i.price, 0);
@@ -279,11 +280,11 @@ export const mockApi = {
     return order;
   },
 
-  /** Poll trạng thái thanh toán — về sau thay bằng webhook của cổng thanh toán */
+  /** Poll the payment status — to be replaced by the payment gateway's webhook later */
   async getOrderStatus(orderId: string): Promise<Order> {
     await sleep(rnd(400, 900));
     const order = orders.get(orderId);
-    if (!order) throw new ApiError("NOT_FOUND", "Không tìm thấy đơn hàng");
+    if (!order) throw new ApiError("NOT_FOUND", "Order not found");
     if (order.status !== "PENDING") return order;
 
     const hold = holds.get(order.holdId);
@@ -291,12 +292,12 @@ export const mockApi = {
       order.status = "EXPIRED";
       return order;
     }
-    // Cổng thanh toán cần vài giây mới có kết quả
+    // The payment gateway needs a few seconds to return a result
     if (Math.random() < 0.45) return order;
 
     if (Math.random() < chaos.paymentFailRate) {
       order.status = "FAILED";
-      order.failureReason = "Ngân hàng từ chối giao dịch (số dư không đủ hoặc sai OTP)";
+      order.failureReason = "The bank declined the transaction (insufficient balance or wrong OTP)";
       return order;
     }
 
@@ -310,27 +311,27 @@ export const mockApi = {
         code: `${order.code}-${i + 1}`,
         orderCode: order.code,
         trainCode: trip?.trainCode ?? "SE1",
-        fromStation: trip?.fromStation.name ?? "Hà Nội",
-        toStation: trip?.toStation.name ?? "Sài Gòn",
+        fromStation: trip?.fromStation.name ?? "Hanoi",
+        toStation: trip?.toStation.name ?? "Saigon",
         departAt: trip?.departAt ?? new Date().toISOString(),
         carriageNumber: item.carriageNumber,
         seatLabel: item.seatLabel,
         seatClass: item.seatClass,
-        passengerName: p?.fullName ?? "Hành khách",
+        passengerName: p?.fullName ?? "Passenger",
         passengerId: p?.idNumber ?? "",
         price: item.price,
         status: "VALID",
         qrPayload: [
           order.code,
           trip?.trainCode,
-          `Toa ${item.carriageNumber}`,
-          `Cho ${item.seatLabel}`,
+          `Carriage ${item.carriageNumber}`,
+          `Seat ${item.seatLabel}`,
           p?.idNumber,
           trip ? `${formatTime(trip.departAt)} ${formatDate(trip.departAt)}` : "",
         ].join("|"),
       };
       tickets.unshift(ticket);
-      // Ghế chuyển hẳn sang đã bán
+      // The seat becomes sold for good
       for (const c of carriagesFor(hold.tripId, item.seatClass)) {
         const seat = c.seats.find((s) => s.id === item.seatId);
         if (seat) seat.status = "sold";
@@ -348,13 +349,13 @@ export const mockApi = {
   async refundTicket(ticketId: string): Promise<Ticket> {
     await gate({ canOverload: false });
     const t = tickets.find((x) => x.id === ticketId);
-    if (!t) throw new ApiError("NOT_FOUND", "Không tìm thấy vé");
-    if (t.status !== "VALID") throw new ApiError("VALIDATION", "Vé này không thể trả");
+    if (!t) throw new ApiError("NOT_FOUND", "Ticket not found");
+    if (t.status !== "VALID") throw new ApiError("VALIDATION", "This ticket cannot be refunded");
     t.status = "REFUNDED";
     return t;
   },
 
-  // ── Phòng chờ ─────────────────────────────────────────────────────────────
+  // ── Waiting room ──────────────────────────────────────────────────────────
   async joinQueue(): Promise<QueueTicket> {
     await sleep(rnd(200, 500));
     if (!chaos.queueEnabled) {
@@ -375,9 +376,9 @@ export const mockApi = {
   async getQueueStatus(token: string): Promise<QueueTicket> {
     await sleep(rnd(150, 400));
     if (!queueState || queueState.token !== token) {
-      throw new ApiError("NOT_FOUND", "Lượt chờ không còn hiệu lực");
+      throw new ApiError("NOT_FOUND", "This place in the queue is no longer valid");
     }
-    // Hàng đợi nhích dần: khoảng 35 người mỗi giây
+    // The queue moves forward at about 35 people per second
     const elapsed = (Date.now() - queueState.enteredAt) / 1000;
     const position = Math.max(0, Math.round(queueState.position - elapsed * 35));
     const admitted = position === 0;

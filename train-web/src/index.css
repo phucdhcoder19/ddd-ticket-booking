@@ -1,51 +1,50 @@
 @import "tailwindcss";
 
 /* ──────────────────────────────────────────────────────────────
-   DESIGN TOKENS — Vé Tàu Tết, theo ngôn ngữ thị giác Traveloka.
+   DESIGN TOKENS — Lunar New Year train tickets, in Traveloka's visual language.
 
-   Tên token giữ nguyên như bản cũ (son / mai / ink) để 7 trang hiện
-   có tự đổi màu theo mà không phải sửa từng file:
-     son-*  = xanh Traveloka  (màu chính: nút, link, tab đang chọn)
-     mai-*  = cam             (giá tiền, badge giảm giá, CTA phụ)
-     ink-*  = xám lạnh        (chữ, viền, nền phụ)
+   Three colour scales used across all 7 pages:
+     brand-*   = Traveloka blue  (primary: buttons, links, selected tab)
+     accent-*  = orange          (prices, discount badges, secondary CTAs)
+     ink-*     = cool grey       (text, borders, secondary backgrounds)
 
-   Mọi cặp chữ/nền dưới đây đạt contrast >= 4.5:1 (AA).
+   Every text/background pair below reaches a contrast of >= 4.5:1 (AA).
    ────────────────────────────────────────────────────────────── */
 @theme {
-  /* Plus Jakarta Sans — sans hình học, cùng gốc Indonesia với Traveloka và
-     rất gần font của họ. Có đủ dấu tiếng Việt, kể cả ế ộ ữ ỹ. */
+  /* Plus Jakarta Sans — a geometric sans with Indonesian roots like Traveloka,
+     and very close to their typeface. Has full diacritic coverage for names. */
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
-  /* Xanh Traveloka (primary) */
-  --color-son-50: #eff8ff;
-  --color-son-100: #dceffd;
-  --color-son-200: #b9dffb;
-  --color-son-300: #7cc6f8;
-  --color-son-400: #38a9f5;
-  --color-son-500: #0194f3;  /* xanh thương hiệu — dùng cho nền nút lớn */
-  --color-son-600: #0d73c8;  /* chữ xanh trên nền trắng, contrast 4.6:1 */
-  --color-son-700: #0f5ea3;
-  --color-son-800: #134e83;
-  --color-son-900: #12365a;
-  --color-son-950: #0b2239;  /* nền hero tối */
+  /* Traveloka blue (primary) */
+  --color-brand-50: #eff8ff;
+  --color-brand-100: #dceffd;
+  --color-brand-200: #b9dffb;
+  --color-brand-300: #7cc6f8;
+  --color-brand-400: #38a9f5;
+  --color-brand-500: #0194f3;  /* brand blue — background of large buttons */
+  --color-brand-600: #0d73c8;  /* blue text on white, contrast 4.6:1 */
+  --color-brand-700: #0f5ea3;
+  --color-brand-800: #134e83;
+  --color-brand-900: #12365a;
+  --color-brand-950: #0b2239;  /* dark hero background */
 
-  /* Cam (accent) — giá tiền, nhãn tiết kiệm, nút tìm kiếm */
-  --color-mai-50: #fff5ed;
-  --color-mai-100: #ffe8d5;
-  --color-mai-200: #ffcdaa;
-  --color-mai-300: #ffa974;
-  --color-mai-400: #ff7a3c;
-  --color-mai-500: #ff5e1f;
-  --color-mai-600: #e8490b;  /* chữ giá trên nền trắng, contrast 4.5:1 */
-  --color-mai-700: #bf360a;
+  /* Orange (accent) — prices, savings badges, search button */
+  --color-accent-50: #fff5ed;
+  --color-accent-100: #ffe8d5;
+  --color-accent-200: #ffcdaa;
+  --color-accent-300: #ffa974;
+  --color-accent-400: #ff7a3c;
+  --color-accent-500: #ff5e1f;
+  --color-accent-600: #e8490b;  /* price text on white, contrast 4.5:1 */
+  --color-accent-700: #bf360a;
 
-  /* Xám lạnh */
+  /* Cool grey */
   --color-ink-50: #f7f9fa;
   --color-ink-100: #eef1f4;
   --color-ink-200: #e0e5ea;
   --color-ink-300: #c6ced6;
   --color-ink-400: #9aa5b1;
-  --color-ink-500: #687176;  /* chữ phụ, contrast 5.2:1 trên trắng */
+  --color-ink-500: #687176;  /* secondary text, contrast 5.2:1 on white */
   --color-ink-600: #505a62;
   --color-ink-700: #3c454c;
   --color-ink-800: #26303a;
@@ -53,7 +52,7 @@
 
   --color-canvas: #f5f7fa;
 
-  /* Ngữ nghĩa trạng thái ghế/vé */
+  /* Semantic seat/ticket states */
   --color-ok-50: #e9f8f0;
   --color-ok-600: #0f8a55;
   --color-warn-50: #fff7e6;
@@ -61,7 +60,7 @@
   --color-info-50: #eff8ff;
   --color-info-600: #0d73c8;
 
-  /* Bo góc & bóng đổ — Traveloka bo nhẹ 8px, bóng rất mỏng */
+  /* Radius & shadows — Traveloka uses a soft 8px radius and very light shadows */
   --radius-card: 8px;
   --shadow-soft: 0 1px 2px rgb(26 26 26 / 0.05), 0 1px 6px rgb(26 26 26 / 0.06);
   --shadow-lift: 0 2px 10px rgb(26 26 26 / 0.10);
@@ -79,17 +78,17 @@
     line-height: 1.5;
     padding-bottom: env(safe-area-inset-bottom);
   }
-  /* Focus ring rõ ràng cho điều hướng bàn phím — không bao giờ tắt outline */
+  /* A clear focus ring for keyboard navigation — never remove the outline */
   :focus-visible {
-    @apply outline-none ring-3 ring-son-400 ring-offset-2 ring-offset-white rounded-md;
+    @apply outline-none ring-3 ring-brand-400 ring-offset-2 ring-offset-white rounded-md;
   }
   h1, h2, h3 { @apply font-bold tracking-tight text-balance; }
-  /* Số liệu (giá, giờ, mã ghế) canh đều cột cho dễ so sánh */
+  /* Figures (prices, times, seat codes) line up in columns for easy comparison */
   .tnum { font-variant-numeric: tabular-nums; }
 }
 
 @layer utilities {
-  /* Dải xanh loang ở góc trái header, giống mảng màu sau logo Traveloka */
+  /* Soft blue wash in the header's left corner, like the colour patch behind Traveloka's logo */
   .bg-brand-swoosh {
     background-image: radial-gradient(
       120% 180% at 0% 0%,
@@ -99,8 +98,8 @@
     );
   }
 
-  /* Mảng xanh góc trái khi header trong suốt nằm trên ảnh tối — đậm hơn
-     bản bg-brand-swoosh vì phải nổi lên trên nền ảnh, không phải nền trắng */
+  /* Left-corner blue patch when the transparent header sits on a dark image — stronger
+     than bg-brand-swoosh because it has to stand out on a photo, not on white */
   .bg-swoosh-dark {
     background-image: radial-gradient(
       110% 200% at 0% 0%,
@@ -110,7 +109,7 @@
     );
   }
 
-  /* Lớp phủ tối trên ảnh hero để chữ trắng luôn đọc được */
+  /* Dark overlay on the hero image so white text is always readable */
   .hero-scrim {
     background-image: linear-gradient(
       180deg,
@@ -120,10 +119,10 @@
     );
   }
 
-  /* Thẻ điểm đến: nền chuyển sắc thay cho ảnh chụp, luôn render được kể cả offline */
+  /* Destination cards: a gradient instead of a photo, always renders, even offline */
   .card-scene { background-image: var(--scene); }
 
-  /* Thanh cuộn ngang của carousel — ẩn thanh nhưng vẫn cuộn được */
+  /* Carousel horizontal scroll — hide the bar but keep scrolling */
   .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
 
@@ -131,7 +130,7 @@
     .animate-pulse-once { animation: pulse-once 0.9s ease-out 1; }
   }
   @keyframes pulse-once {
-    0% { background-color: var(--color-mai-100); }
+    0% { background-color: var(--color-accent-100); }
     100% { background-color: transparent; }
   }
 }

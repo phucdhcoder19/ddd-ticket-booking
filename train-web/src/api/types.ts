@@ -1,17 +1,17 @@
-export type Station = { code: string; name: string; region: "Bắc" | "Trung" | "Nam" };
+export type Station = { code: string; name: string; region: "North" | "Central" | "South" };
 
 export type SeatClassCode = "SOFT_SEAT" | "BERTH_4" | "BERTH_6";
 
 export const SEAT_CLASS_LABEL: Record<SeatClassCode, string> = {
-  SOFT_SEAT: "Ngồi mềm điều hoà",
-  BERTH_4: "Nằm khoang 4",
-  BERTH_6: "Nằm khoang 6",
+  SOFT_SEAT: "Air-conditioned soft seat",
+  BERTH_4: "4-berth sleeper",
+  BERTH_6: "6-berth sleeper",
 };
 
 export const SEAT_CLASS_SHORT: Record<SeatClassCode, string> = {
-  SOFT_SEAT: "Ngồi mềm",
-  BERTH_4: "Khoang 4",
-  BERTH_6: "Khoang 6",
+  SOFT_SEAT: "Soft seat",
+  BERTH_4: "4-berth",
+  BERTH_6: "6-berth",
 };
 
 export type SeatClassOffer = {
@@ -30,7 +30,7 @@ export type Trip = {
   arriveAt: string;           // ISO
   durationMinutes: number;
   classes: SeatClassOffer[];
-  /** Tổng chỗ còn của cả chuyến — dùng cho badge "Sắp hết"/"Hết vé" */
+  /** Free places on the whole trip — used for the "Almost gone"/"Sold out" badges */
   availableTotal: number;
 };
 
@@ -41,9 +41,9 @@ export type Seat = {
   label: string;              // "12"
   row: number;
   col: number;
-  /** Với toa nằm: số khoang (1..n); với toa ngồi: undefined */
+  /** Sleeper carriage: compartment number (1..n); seating carriage: undefined */
   compartment?: number;
-  /** Tầng giường: 1 = tầng 1 (đắt hơn), 2, 3 */
+  /** Berth level: 1 = lower (more expensive), 2, 3 */
   berthLevel?: number;
   status: Exclude<SeatStatus, "selected">;
   price: number;
@@ -51,7 +51,7 @@ export type Seat = {
 
 export type Carriage = {
   id: string;
-  number: number;             // Toa số 3
+  number: number;             // Carriage 3
   seatClass: SeatClassCode;
   layout: "seat-2-2" | "berth-4" | "berth-6";
   rows: number;
@@ -62,10 +62,10 @@ export type Carriage = {
 export type Discount = "NONE" | "STUDENT" | "CHILD" | "SENIOR";
 
 export const DISCOUNT_LABEL: Record<Discount, string> = {
-  NONE: "Không giảm giá",
-  STUDENT: "Sinh viên (−10%)",
-  CHILD: "Trẻ em dưới 10 tuổi (−25%)",
-  SENIOR: "Người cao tuổi từ 60 (−15%)",
+  NONE: "No discount",
+  STUDENT: "Student (−10%)",
+  CHILD: "Child under 10 (−25%)",
+  SENIOR: "Senior, 60 and over (−15%)",
 };
 
 export const DISCOUNT_RATE: Record<Discount, number> = {
@@ -95,7 +95,7 @@ export type Hold = {
   holdId: string;
   tripId: string;
   items: HoldItem[];
-  /** Thời điểm hết hạn giữ chỗ (ISO) — nguồn sự thật là server, client chỉ đếm ngược */
+  /** When the hold expires (ISO) — the server is the source of truth, the client only counts down */
   expiresAt: string;
   serverNow: string;
 };
@@ -104,8 +104,8 @@ export type PaymentMethod = "VNPAY" | "MOMO" | "BANK_CARD";
 
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   VNPAY: "VNPay",
-  MOMO: "Ví MoMo",
-  BANK_CARD: "Thẻ ngân hàng (ATM/Visa)",
+  MOMO: "MoMo wallet",
+  BANK_CARD: "Bank card (ATM/Visa)",
 };
 
 export type OrderStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED";
@@ -145,14 +145,14 @@ export type QueueTicket = {
   total: number;
   estimatedWaitSeconds: number;
   status: "WAITING" | "ADMITTED";
-  /** Thời hạn để vào mua sau khi được gọi */
+  /** How long there is to buy once admitted */
   admissionExpiresAt?: string;
 };
 
 export type SaleWindow = {
-  /** Thời điểm mở bán đợt hiện tại (ISO). Nếu đã mở thì opensAt <= now */
+  /** When the current sale opens (ISO). If already open, opensAt <= now */
   opensAt: string;
-  label: string;              // "Đợt 2 — vé Tết Đinh Mùi 2027"
+  label: string;              // "Sale 2 — Lunar New Year 2027 tickets"
   isOpen: boolean;
   serverNow: string;
 };

@@ -24,37 +24,40 @@ public interface SeatJPAMapper extends JpaRepository<Seat, Long> {
     List<Seat> findByOrderIdOrderByCarriageNumberAscRowNoAscColNoAsc(Long orderId);
 
     /**
-     * Dem ghe con trong, gom theo hang cho.
+     * Count free seats, grouped by seat class.
      *
-     * Mot cau GROUP BY thay cho N cau dem rieng tung hang. Man hinh tim chuyen
-     * hien 7 tau x 3 hang cho = 21 con so; neu dem tung cai la 21 luot xuong DB.
+     * One GROUP BY query instead of N separate counts. The trip search screen
+     * shows 7 trains x 3 seat classes = 21 numbers; counting each one would be
+     * 21 round trips to the DB.
      *
-     * Tra ve Object[]{ seatClass, soGheTrong } — day la ranh gioi infrastructure,
-     * tang tren se doi sang kieu co nghia.
+     * Returns Object[]{ seatClass, freeSeats } — this is the infrastructure
+     * boundary, the layer above converts it into a meaningful type.
      */
     @Query("SELECT s.seatClass, COUNT(s) FROM Seat s " +
            "WHERE s.tripId = :tripId AND s.status = 0 GROUP BY s.seatClass")
     List<Object[]> countFreeByClass(@Param("tripId") Long tripId);
 
     /**
-     * GIÀNH GHẾ — đây là toàn bộ phần chống tranh chấp của màn chọn chỗ.
+     * CLAIM SEATS — this is the entire contention handling of the seat picker.
      *
-     * Mệnh đề "AND s.status = 0" chính là cái khoá, đúng như markReleased()
-     * của Hold: InnoDB khoá dòng khi UPDATE, hai người cùng bấm vào ghế C3-12
-     * phải xếp hàng, người đến sau đọc giá trị MỚI NHẤT, thấy status đã là 1,
-     * điều kiện sai, sửa 0 dòng.
+     * The "AND s.status = 0" clause is the lock, exactly like Hold's
+     * markReleased(): InnoDB locks the row on UPDATE, so two people clicking
+     * seat C3-12 at once must queue; the second one reads the LATEST value,
+     * sees status is already 1, the condition fails, 0 rows updated.
      *
-     * Không cần Redisson ở đây. Distributed lock chỉ cần khi thứ phải bảo vệ
-     * nằm NGOÀI database (như lúc sinh chuyến, ghi 600 dòng); còn khi tranh
-     * nhau đúng một dòng thì chính database đã là trọng tài rồi.
+     * No Redisson needed here. A distributed lock is only needed when the thing
+     * to protect lives OUTSIDE the database (like provisioning a trip, writing
+     * 600 rows); when people fight over exactly one row, the database itself
+     * is already the referee.
      *
-     * Số dòng trả về là số ghế giành được. Tầng trên so với số ghế đã xin —
-     * thiếu một ghế cũng phải ROLLBACK cả lượt, vì khách chọn 3 chỗ liền nhau
-     * chứ không phải "3 chỗ bất kỳ còn trống".
+     * The returned row count is the number of seats claimed. The layer above
+     * compares it with the number requested — missing even one seat must
+     * ROLLBACK the whole hold, because the passenger picked 3 adjacent seats,
+     * not "any 3 free seats".
      *
-     * clearAutomatically: sau câu UPDATE này tầng trên đọc lại chính những
-     * dòng vừa sửa. Không xoá persistence context thì Hibernate trả về bản
-     * còn nằm trong bộ nhớ phiên — status cũ, holdId rỗng.
+     * clearAutomatically: right after this UPDATE the layer above reads the
+     * same rows back. Without clearing the persistence context, Hibernate
+     * returns the copy still in session memory — old status, empty holdId.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Seat s SET s.status = 1, s.holdId = :holdId " +
@@ -64,16 +67,16 @@ public interface SeatJPAMapper extends JpaRepository<Seat, Long> {
                      @Param("holdId") Long holdId);
 
     /**
-     * TRẢ GHẾ. "AND s.status = 1" để không bao giờ kéo ngược một ghế ĐÃ BÁN
-     * về trạng thái trống: job thu hồi chạy sau khi khách vừa thanh toán
-     * xong sẽ tìm thấy 0 dòng và bỏ đi, thay vì bán lại chỗ đã có chủ.
+     * RETURN SEATS. "AND s.status = 1" so a SOLD seat is never pulled back to
+     * free: a release job running right after the customer paid finds 0 rows
+     * and moves on, instead of reselling a seat that already has an owner.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Seat s SET s.status = 0, s.holdId = null " +
            "WHERE s.holdId = :holdId AND s.status = 1")
     int releaseByHold(@Param("holdId") Long holdId);
 
-    /** Ghế chuyển sang đã bán. Giữ nguyên holdId để tra ngược lại lượt giữ. */
+    /** Seats become sold. holdId is kept so the hold can be traced back. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Seat s SET s.status = 2, s.orderId = :orderId " +
            "WHERE s.holdId = :holdId AND s.status = 1")

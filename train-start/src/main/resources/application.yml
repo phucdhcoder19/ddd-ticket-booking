@@ -1,56 +1,56 @@
 server:
   port: 9999
   tomcat:
-    # BAI 27 — so thread theo cong thuc Brian Goetz:
+    # LESSON 27 — thread count by Brian Goetz's formula:
     #   N = Ncpu x Ucpu x (1 + W/C)
-    #     Ncpu = 12 core
-    #     Ucpu = 0.8  (muc CPU muon dung)
-    #     W/C  = ~4.7 (mot request cho Redis+MySQL ~7ms, tinh toan ~1.5ms)
-    #   -> 12 x 0.8 x 5.7 ~= 55, lam tron 50
+    #     Ncpu = 12 cores
+    #     Ucpu = 0.8  (target CPU utilisation)
+    #     W/C  = ~4.7 (a request waits on Redis+MySQL ~7ms, computes ~1.5ms)
+    #   -> 12 x 0.8 x 5.7 ~= 55, rounded to 50
     #
-    # CHU Y KEY: Spring Boot 2.3 da bo "server.tomcat.max-threads".
-    # Viet key cu thi Spring BO QUA LANG LE, khong loi khong canh bao,
-    # va Tomcat chay 200 thread mac dinh.
+    # MIND THE KEY: Spring Boot 2.3 dropped "server.tomcat.max-threads".
+    # Using the old key makes Spring IGNORE IT SILENTLY, no error, no warning,
+    # and Tomcat runs the default 200 threads.
     threads:
       max: 50
-      # Giu san bang so core -> traffic dot bien khong phai doi tao thread
+      # Keep as many as cores ready -> a traffic spike does not wait for thread creation
       min-spare: 12
-    # Het thread thi xep hang o DAY, noi minh do duoc va tu choi duoc.
-    # Vuot 200 thi tu choi luon, khong de don xuong MySQL.
+    # When threads run out, requests queue HERE, where we can measure and reject them.
+    # Beyond 200, reject right away instead of piling up on MySQL.
     accept-count: 200
-    # Bat MBean cua Tomcat -> co metric tomcat.threads.config.max de KIEM CHUNG
-    # cau hinh da an that su hay chua, thay vi tin vao file yml.
+    # Enable Tomcat MBeans -> the tomcat.threads.config.max metric PROVES
+    # the config actually took effect, instead of trusting the yml file.
     mbeanregistry:
       enabled: true
 spring:
   application:
     name: train-ticket-booking
-  # LUU Y MUI GIO: container MySQL chay gio UTC, may that chay +07.
-  # De serverTimezone=UTC thi driver hieu "08:00 trong DB la 08:00 UTC" roi doi
-  # sang gio may -> API tra ve 15:00. Cot datetime khong mang mui gio, nen phai
-  # khai dung mui cua ung dung thi doc/ghi moi doi xung.
-  # Sai cho nay se lam job quet don het han (bai 18) lech 7 tieng.
+  # TIME ZONE NOTE: the MySQL container runs in UTC, the host machine in +07.
+  # With serverTimezone=UTC the driver reads "08:00 in the DB is 08:00 UTC" and
+  # converts it to local time -> the API returns 15:00. datetime columns carry
+  # no zone, so the application's zone must be declared for reads and writes to match.
+  # Getting this wrong shifts the hold expiry job (lesson 18) by 7 hours.
   datasource:
     url: jdbc:mysql://localhost:3316/train_ticket?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
     username: root
     password: root1234
     hikari:
-      # Cong thuc cho HO KET NOI KHAC voi cong thuc thread:
-      #   connections = (so core x 2) + so dia = (12 x 2) + 1 = 25 -> lay 20
+      # The CONNECTION POOL formula differs from the thread formula:
+      #   connections = (cores x 2) + disks = (12 x 2) + 1 = 25 -> use 20
       #
-      # Nho hon so thread la DUNG: moi request chi cam connection ~5ms
-      # trong vong doi ~15ms. Ho to hon suc MySQL chi lam moi query cham
-      # hon, va day hang doi xuong DB — noi minh khong kiem soat duoc.
+      # Fewer than threads is CORRECT: each request holds a connection ~5ms
+      # out of a ~15ms lifetime. A pool bigger than MySQL can handle only makes
+      # every query slower and pushes the queue down into the DB — where we have no control.
       maximum-pool-size: 20
-      # Bang maximum-pool-size -> ho co dinh, khong co gian.
-      # Ho co gian gay tre dung luc cao diem: phai mo connection moi (50-100ms).
+      # Equal to maximum-pool-size -> fixed pool, no resizing.
+      # A resizing pool adds latency right at peak time: new connections cost 50-100ms.
       minimum-idle: 20
-      # Cho toi da 3s roi bao loi, khong treo vo han
+      # Wait at most 3s, then fail instead of hanging forever
       connection-timeout: 3000
   jpa:
     hibernate:
-      ddl-auto: update # tự tạo bảng từ @Entity — chỉ dùng khi học
-    show-sql: true # BẬT lên, bài này cần nhìn SQL để biết cache có ăn không
+      ddl-auto: update # creates tables from @Entity — for learning only
+    show-sql: true # ON, this lesson needs to see the SQL to tell whether the cache works
     properties:
       hibernate:
         format_sql: true
@@ -63,28 +63,42 @@ spring:
           max-active: 50
 app:
   pricing:
-    # Khung ngay cao diem Tet — nganh duong sat cong bo bang van ban,
-    # khong suy ra tu lich am. Ngoai khung nay he so = 1.0
+    # Lunar New Year peak dates — published by the railway in an official notice,
+    # not derived from the lunar calendar. Outside this range the factor is 1.0
     peak-from: "2027-01-25"
     peak-to: "2027-02-05"
     peak-surcharge: 1.35
   hold:
-    # Giu cho bao lau. Doi thanh 30s de xem job chay ma khong phai ngoi doi.
+    # How long a hold lasts. Set to 30s to watch the job run without waiting.
     duration: 10m
-    # Moi luot quet don toi da bao nhieu -> transaction ngan, khong khoa lau
+    # Max holds released per scan -> short transactions, no long locks
     release-batch: 200
-    # Job quet moi bao nhieu ms
+    # How often the job scans, in ms
     scan-interval-ms: 10000
+  queue:
+    # false = open door, everyone gets in immediately and POST /holds needs no admission.
+    # Turn off when JMeter fires straight at /holds.
+    enabled: true
+    # Max number of PEOPLE inside (picking seats, paying) at the same time.
+    # Local test: set 2 and open 3 tabs -> the third tab must wait.
+    capacity: 500
+    # How often the admit job runs (ms), and how many people it admits per run at most
+    admit-interval-ms: 1000
+    max-admit-per-tick: 50
+    # Once admitted, how long there is to buy; after that the slot is lost and freed
+    admission-window: 15m
+    # Estimated time a person spends inside — only used to show "about X minutes left"
+    estimated-session-seconds: 180
   sale:
-    # Ten dot mo ban — chu hien thi, khong phai du lieu nghiep vu
-    label: "Đợt 1 — vé Tết Đinh Mùi 2027"
+    # Sale label — display text, not business data
+    label: "Sale 1 — Lunar New Year 2027 tickets"
   web:
-    # Origin cua train-web. Vite nhay cong khi 5173 ban -> dung [*] cho moi cong localhost.
-    # Len that thi thay bang domain cu the, KHONG de [*].
+    # Origin of train-web. Vite switches ports when 5173 is busy -> [*] for any localhost port.
+    # In production replace it with the real domain, do NOT keep [*].
     allowed-origin-pattern: "http://localhost:[*]"
   demo:
-    # Bai 21: doi thanh true de co tinh gay loi SAU khi tru kho MySQL
-    # -> kiem chung transaction ROLLBACK (kho quay ve so cu, khong co don)
+    # Lesson 21: set to true to fail on purpose AFTER deducting MySQL stock
+    # -> proves the transaction ROLLS BACK (stock back to its old value, no order)
     fail-after-deduct: false
 
 resilience4j:
@@ -125,7 +139,7 @@ management:
       show-details: always
   metrics:
     tags:
-      # Gan nhan application vao MOI metric -> Grafana loc duoc theo app
+      # Tag EVERY metric with the application name -> Grafana can filter by app
       application: ${spring.application.name}
   prometheus:
     metrics:
@@ -135,13 +149,13 @@ management:
     key-values:
       application: ${spring.application.name}
 
-# Cau hinh do do tre (latency) cho HTTP
+# Latency measurement for HTTP
 management.metrics.distribution:
-  # Bat histogram -> tinh duoc p50/p95/p99 trong Grafana
+  # Enable histograms -> p50/p95/p99 can be computed in Grafana
   percentiles-histogram:
     http.server.requests: true
   percentiles:
     http.server.requests: 0.5, 0.95, 0.99
-  # Cac moc SLO: bao nhieu % request duoi 100ms / 500ms / 1s / 2s
+  # SLO buckets: what % of requests finish under 100ms / 500ms / 1s / 2s
   slo:
     http.server.requests: 100ms, 500ms, 1s, 2s

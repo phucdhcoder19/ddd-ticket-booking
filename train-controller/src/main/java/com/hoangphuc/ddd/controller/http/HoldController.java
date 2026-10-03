@@ -20,12 +20,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * Vòng đời một lượt giữ chỗ.
+ * Lifecycle of a seat hold.
  *
- *   POST   /holds           chọn chỗ -> giành ghế, bắt đầu đếm ngược
- *   GET    /holds/{code}    polling  -> còn bao nhiêu giây (theo giờ SERVER)
- *   PUT    /holds/{code}/passengers   ghi tên người ngồi từng ghế, chốt giảm giá
- *   DELETE /holds/{code}    quay lại -> trả ghế ngay
+ *   POST   /holds           pick seats -> claim them, start the countdown
+ *   GET    /holds/{code}    polling    -> seconds left (by the SERVER clock)
+ *   PUT    /holds/{code}/passengers   record who sits in each seat, fix discounts
+ *   DELETE /holds/{code}    go back    -> return the seats right away
  */
 @RestController
 @RequestMapping("/holds")
@@ -34,26 +34,36 @@ import java.util.List;
 public class HoldController {
 
     /**
-     * Chưa có đăng nhập. Mọi lượt giữ chỗ đều ghi về một người dùng giả.
+     * No login yet. Every hold is recorded against one demo user.
      *
-     * Để hằng số ở đây, KHÔNG nhận userId từ body: client gửi userId nào
-     * cũng được nghĩa là ai cũng đặt vé hộ người khác, và tệ hơn, xem được
-     * vé của người khác khi có màn "vé của tôi". Khi cắm đăng nhập vào thì
-     * chỗ cần sửa đúng là một dòng này.
+     * A constant here, userId is NOT read from the body: accepting any userId
+     * from the client means anyone can book on behalf of anyone else and,
+     * worse, see other people's tickets once "my tickets" exists. When login
+     * is plugged in, this is exactly the one line to change.
      */
     private static final Long DEMO_USER_ID = 1L;
 
+    public static final String QUEUE_TOKEN_HEADER = "X-Queue-Token";
+
     private final HoldAppService holdAppService;
 
+    /**
+     * The admission token travels in a HEADER, not in the body: it is not data
+     * of the hold but the caller's "pass" — the same kind of thing as
+     * Authorization. In a header, the frontend attaches it once for every
+     * request instead of adding it to each body.
+     */
     @PostMapping
-    public ResultMessage<HoldDTO> create(@Valid @RequestBody CreateHoldRequest request) {
+    public ResultMessage<HoldDTO> create(@Valid @RequestBody CreateHoldRequest request,
+                                         @RequestHeader(value = QUEUE_TOKEN_HEADER, required = false) String queueToken) {
         HoldCommand command = new HoldCommand(
                 request.getTripId(),
                 request.getSeatClass(),
                 distinct(request.getSeatIds()),
                 request.getFrom(),
                 request.getTo(),
-                DEMO_USER_ID);
+                DEMO_USER_ID,
+                queueToken);
 
         return toResponse(holdAppService.createHold(command));
     }
@@ -64,9 +74,9 @@ public class HoldController {
     }
 
     /**
-     * PUT chứ không POST: body là TOÀN BỘ danh sách hành khách, gửi lại bao
-     * nhiêu lần cũng ra cùng một trạng thái. Frontend tự thử lại khi mạng
-     * chậm, và khách bấm "Quay lại" sửa tên rồi gửi lần nữa là chuyện thường.
+     * PUT, not POST: the body is the WHOLE passenger list, so sending it any
+     * number of times ends in the same state. The frontend retries on slow
+     * networks, and customers pressing "Back" to fix a name and resending is normal.
      */
     @PutMapping("/{holdCode}/passengers")
     public ResultMessage<HoldDTO> savePassengers(@PathVariable("holdCode") String holdCode,
@@ -83,21 +93,21 @@ public class HoldController {
     }
 
     /**
-     * Bỏ mã chỗ trùng nhau trước khi xuống tầng dưới.
+     * Drop duplicate seat codes before going down a layer.
      *
-     * Câu UPDATE giành ghế đếm số DÒNG sửa được, nên xin ["C3-1","C3-1"] sẽ
-     * sửa 1 dòng trong khi tầng trên chờ 2 — thành ra báo "chỗ đã có người
-     * giữ" cho chính cái ghế vừa giữ được. Lọc ở biên thay vì bắt tầng dưới
-     * phải đề phòng dữ liệu bẩn.
+     * The claim UPDATE counts the ROWS it changed, so asking for
+     * ["C3-1","C3-1"] changes 1 row while the layer above expects 2 — and the
+     * customer is told "seat already taken" about the very seat they just got.
+     * Filter at the boundary instead of making lower layers guard against dirty input.
      */
     private List<String> distinct(List<String> seatIds) {
         return seatIds == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(seatIds));
     }
 
     /**
-     * Chuẩn hoá ở biên, để DB chỉ có MỘT dạng cho mỗi thứ: tra vé theo số
-     * điện thoại mà trong bảng lẫn "0912 345 678" với "+84912345678" thì
-     * câu WHERE phone = ? không bao giờ tìm đủ.
+     * Normalise at the boundary so the DB holds ONE form of each value: if the
+     * table mixes "0912 345 678" and "+84912345678", a lookup with
+     * WHERE phone = ? never finds them all.
      */
     private PassengerCommand toCommand(SavePassengersRequest.PassengerRequest p) {
         String phone = p.getPhone().replaceAll("[\\s.]", "");
@@ -116,26 +126,28 @@ public class HoldController {
     }
 
     /**
-     * Chỉ controller mới biết tới con số HTTP. Tầng dưới trả về enum, vì nếu
-     * mai luồng này chạy qua Kafka thay vì HTTP thì enum vẫn dùng được còn
-     * số 409 thì vô nghĩa.
+     * Only the controller knows about HTTP codes. Lower layers return an enum,
+     * because if this flow ran over Kafka instead of HTTP tomorrow, the enum
+     * would still make sense while the number 409 would not.
      *
-     * 410 Gone cho hold hết hạn, không dùng 404: 404 nghĩa là "chưa bao giờ
-     * tồn tại", 410 nghĩa là "từng có, giờ mất rồi" — client phân biệt được
-     * để hiện đúng câu "Hết giờ giữ chỗ, mời bạn chọn lại".
+     * 410 Gone for an expired hold, not 404: 404 means "never existed", 410
+     * means "existed, now gone" — the client can tell them apart and show the
+     * right "Your hold has expired, please pick again" message.
      */
     private ResultMessage<HoldDTO> toResponse(HoldResult result) {
         return switch (result.getStatus()) {
             case SUCCESS        -> ResultUtil.data(result.getHold());
-            case SEAT_TAKEN     -> ResultUtil.error(409, "Cho ban chon vua co nguoi giu, moi chon cho khac");
-            case NOT_ON_SALE    -> ResultUtil.error(409, "Chua toi gio mo ban");
-            case SALE_ENDED     -> ResultUtil.error(409, "Chuyen nay da chay, khong con ban ve");
-            case TRIP_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay chuyen tau");
-            case INVALID_ROUTE  -> ResultUtil.error(400, "Ga di hoac ga den khong hop le");
-            case HOLD_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay luot giu cho");
-            case HOLD_EXPIRED   -> ResultUtil.error(410, "Het gio giu cho, moi ban chon lai");
-            case PASSENGER_MISMATCH -> ResultUtil.error(400, "Moi cho dang giu can dung mot hanh khach");
-            case ERROR          -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
+            // 403: we know who you are but you are NOT ALLOWED in yet — unlike 401 (not logged in)
+            case QUEUE_REQUIRED -> ResultUtil.error(403, "Please queue in the waiting room before picking seats");
+            case SEAT_TAKEN     -> ResultUtil.error(409, "Someone just took a seat you picked, please choose another");
+            case NOT_ON_SALE    -> ResultUtil.error(409, "The sale has not opened yet");
+            case SALE_ENDED     -> ResultUtil.error(409, "This train has already departed, tickets are no longer sold");
+            case TRIP_NOT_FOUND -> ResultUtil.error(404, "Trip not found");
+            case INVALID_ROUTE  -> ResultUtil.error(400, "Invalid departure or arrival station");
+            case HOLD_NOT_FOUND -> ResultUtil.error(404, "Hold not found");
+            case HOLD_EXPIRED   -> ResultUtil.error(410, "Your hold has expired, please pick your seats again");
+            case PASSENGER_MISMATCH -> ResultUtil.error(400, "Each held seat needs exactly one passenger");
+            case ERROR          -> ResultUtil.error(500, "System error, please try again");
         };
     }
 }

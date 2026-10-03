@@ -1,12 +1,13 @@
 export type ApiErrorKind =
-  | "SOLD_OUT"        // 409 — hết vé
-  | "SEAT_TAKEN"      // 409 — ghế vừa bị người khác giữ
-  | "HOLD_EXPIRED"    // 410 — hết thời gian giữ chỗ
-  | "OVERLOADED"      // 429 — hệ thống quá tải
-  | "TIMEOUT"         // mạng chậm / không phản hồi
+  | "SOLD_OUT"        // 409 — sold out
+  | "SEAT_TAKEN"      // 409 — someone else just took the seat
+  | "HOLD_EXPIRED"    // 410 — the hold has expired
+  | "OVERLOADED"      // 429 — the system is overloaded
+  | "TIMEOUT"         // slow network / no response
   | "OFFLINE"
   | "VALIDATION"      // 400
-  | "UNAUTHORIZED"    // 401/403
+  | "UNAUTHORIZED"    // 401
+  | "NOT_ADMITTED"    // 403 — not admitted by the waiting room, or the admission has expired
   | "NOT_FOUND"       // 404
   | "SERVER"          // 5xx
   | "UNKNOWN";
@@ -14,9 +15,9 @@ export type ApiErrorKind =
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status?: number;
-  /** Server gợi ý chờ bao lâu rồi thử lại (giây) — từ header Retry-After */
+  /** How long the server suggests waiting before retrying (seconds) — from the Retry-After header */
   readonly retryAfter?: number;
-  /** Dữ liệu kèm theo, ví dụ danh sách ghế vừa bị lấy mất */
+  /** Extra data, e.g. the list of seats that were just taken */
   readonly details?: unknown;
 
   constructor(kind: ApiErrorKind, message: string, opts: { status?: number; retryAfter?: number; details?: unknown } = {}) {
@@ -30,64 +31,70 @@ export class ApiError extends Error {
 }
 
 /**
- * Thông điệp hiển thị cho người dùng — luôn nói RÕ chuyện gì xảy ra và
- * NÊN LÀM GÌ TIẾP, không bao giờ đổ mã lỗi kỹ thuật lên màn hình.
+ * Messages shown to the user — always say CLEARLY what happened and WHAT TO
+ * DO NEXT, never dump a technical error code on the screen.
  */
 export function friendlyMessage(err: unknown): { title: string; detail: string; action?: string } {
   if (!(err instanceof ApiError)) {
     return {
-      title: "Đã có lỗi xảy ra",
-      detail: "Rất tiếc, hệ thống gặp sự cố ngoài dự kiến. Bạn vui lòng thử lại.",
-      action: "Thử lại",
+      title: "Something went wrong",
+      detail: "Sorry, the system ran into an unexpected problem. Please try again.",
+      action: "Try again",
     };
   }
   switch (err.kind) {
     case "SOLD_OUT":
       return {
-        title: "Chuyến này đã hết vé",
-        detail: "Vé vừa được bán hết trong lúc bạn đang chọn. Bạn thử chuyến khác hoặc ngày gần đó nhé.",
-        action: "Xem chuyến khác",
+        title: "This trip is sold out",
+        detail: "The tickets sold out while you were choosing. Try another trip or a nearby date.",
+        action: "See other trips",
       };
     case "SEAT_TAKEN":
       return {
-        title: "Chỗ vừa có người giữ mất",
-        detail: "Có hành khách khác nhanh tay hơn một chút. Chúng tôi đã gợi ý những chỗ trống gần đó cho bạn.",
-        action: "Chọn chỗ khác",
+        title: "Someone just took that seat",
+        detail: "Another passenger was a little faster. We have highlighted free seats nearby for you.",
+        action: "Choose another seat",
       };
     case "HOLD_EXPIRED":
       return {
-        title: "Đã hết thời gian giữ chỗ",
-        detail: "Chỗ của bạn đã được trả lại cho hành khách khác. Bạn cần chọn lại chỗ để tiếp tục.",
-        action: "Chọn lại chỗ",
+        title: "Your hold has expired",
+        detail: "Your seats were released to other passengers. Pick your seats again to continue.",
+        action: "Pick seats again",
       };
     case "OVERLOADED":
       return {
-        title: "Hệ thống đang rất đông",
-        detail: "Quá nhiều người cùng đặt vé lúc này. Chúng tôi đang tự động thử lại giúp bạn, xin đừng tắt trang.",
+        title: "The system is very busy",
+        detail: "Too many people are booking right now. We are retrying for you automatically, please keep this page open.",
       };
     case "TIMEOUT":
       return {
-        title: "Mạng phản hồi chậm",
-        detail: "Yêu cầu của bạn chờ quá lâu chưa có kết quả. Kiểm tra kết nối rồi thử lại giúp chúng tôi nhé.",
-        action: "Thử lại",
+        title: "The network is slow",
+        detail: "Your request waited too long without a response. Check your connection and try again.",
+        action: "Try again",
       };
     case "OFFLINE":
       return {
-        title: "Không có kết nối mạng",
-        detail: "Thiết bị của bạn đang ngoại tuyến. Vé và thao tác dở dang vẫn được giữ nguyên.",
-        action: "Thử lại",
+        title: "No network connection",
+        detail: "Your device is offline. Your tickets and unfinished steps are kept as they are.",
+        action: "Try again",
       };
     case "VALIDATION":
-      return { title: "Thông tin chưa hợp lệ", detail: err.message, action: "Kiểm tra lại" };
+      return { title: "Some details are not valid", detail: err.message, action: "Check again" };
     case "NOT_FOUND":
-      return { title: "Không tìm thấy", detail: "Nội dung bạn tìm không còn tồn tại hoặc đã bị xoá." };
+      return { title: "Not found", detail: "What you are looking for no longer exists or has been removed." };
+    case "NOT_ADMITTED":
+      return {
+        title: "Your turn to buy has ended",
+        detail: "To be fair to everyone, each turn lasts 15 minutes. Please join the queue again.",
+        action: "Join the queue again",
+      };
     case "UNAUTHORIZED":
-      return { title: "Phiên đăng nhập đã hết", detail: "Bạn vui lòng đăng nhập lại để tiếp tục.", action: "Đăng nhập" };
+      return { title: "Your session has expired", detail: "Please sign in again to continue.", action: "Sign in" };
     default:
       return {
-        title: "Máy chủ đang bận",
-        detail: "Hệ thống tạm thời chưa xử lý được yêu cầu. Bạn thử lại sau ít phút nhé.",
-        action: "Thử lại",
+        title: "The server is busy",
+        detail: "The system cannot handle your request right now. Please try again in a few minutes.",
+        action: "Try again",
       };
   }
 }

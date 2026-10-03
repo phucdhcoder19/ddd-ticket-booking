@@ -6,14 +6,14 @@ import { DISCOUNT_PROOF, validateFullName, validateIdNumber, validatePhone } fro
 import { formatVnd } from "@/lib/format";
 
 /**
- * Form một hành khách.
+ * Form for one passenger.
  *
- * Chi tiết nhỏ nhưng quan trọng trên điện thoại:
- *  - inputMode="numeric" cho CCCD và số điện thoại để bật bàn phím số.
- *  - autoComplete đúng chuẩn, để trình duyệt điền hộ — người lớn tuổi gõ CCCD
- *    12 số trên màn hình cảm ứng là việc rất cực.
- *  - Ô CCCD chỉ nhận chữ số: lọc ngay lúc gõ thay vì để người dùng gõ xong mới
- *    báo lỗi "không được có dấu cách".
+ * Small details that matter on a phone:
+ *  - inputMode="numeric" for the ID and phone number to bring up the number pad.
+ *  - Proper autoComplete values so the browser can fill them in — typing a
+ *    12-digit ID on a touch screen is hard work for older people.
+ *  - The ID field only accepts digits: filtered while typing instead of
+ *    complaining "no spaces allowed" after the user is done.
  */
 export function PassengerForm({
   index, item, value, onChange, showErrors,
@@ -22,7 +22,7 @@ export function PassengerForm({
   item: HoldItem;
   value: Passenger;
   onChange: (p: Passenger) => void;
-  /** Bật khi người dùng đã bấm "Tiếp tục" — lúc đó hiện lỗi của cả ô chưa chạm tới */
+  /** On once the user pressed "Continue" — then errors show even for untouched fields */
   showErrors: boolean;
 }) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -39,18 +39,18 @@ export function PassengerForm({
 
   return (
     <fieldset className="rounded-2xl border border-ink-200 bg-white p-4">
-      <legend className="sr-only">Thông tin hành khách thứ {index + 1}</legend>
+      <legend className="sr-only">Details of passenger {index + 1}</legend>
 
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="font-bold text-ink-900">Hành khách {index + 1}</h3>
-        <Badge tone="son">Toa {item.carriageNumber} · chỗ {item.seatLabel}</Badge>
+        <h3 className="font-bold text-ink-900">Passenger {index + 1}</h3>
+        <Badge tone="brand">Carriage {item.carriageNumber} · seat {item.seatLabel}</Badge>
       </div>
 
       <div className="flex flex-col gap-1">
         <TextInput
-          label="Họ và tên"
-          placeholder="NGUYỄN VĂN AN"
-          hint="Ghi đúng như trên CCCD, không viết tắt."
+          label="Full name"
+          placeholder="JANE DOE"
+          hint="Exactly as on the ID card, no abbreviations."
           autoComplete="name"
           autoCapitalize="characters"
           required
@@ -61,9 +61,9 @@ export function PassengerForm({
         />
 
         <TextInput
-          label="Số CCCD"
+          label="ID number"
           placeholder="001203001234"
-          hint="12 chữ số trên căn cước công dân."
+          hint="The 12 digits on the national ID card."
           inputMode="numeric"
           autoComplete="off"
           maxLength={12}
@@ -75,9 +75,9 @@ export function PassengerForm({
         />
 
         <TextInput
-          label="Số điện thoại"
+          label="Phone number"
           placeholder="0912345678"
-          hint="Dùng để báo tin khi tàu đổi giờ."
+          hint="Used to notify you if the departure time changes."
           inputMode="tel"
           type="tel"
           autoComplete="tel"
@@ -90,8 +90,8 @@ export function PassengerForm({
         />
 
         <SelectInput
-          label="Đối tượng giảm giá"
-          hint={DISCOUNT_PROOF[value.discount] ?? "Chọn nếu bạn thuộc diện được giảm giá vé."}
+          label="Discount"
+          hint={DISCOUNT_PROOF[value.discount] ?? "Choose one if you are eligible for a discounted fare."}
           value={value.discount}
           onChange={(e) => set("discount", e.target.value as Discount)}
           options={(Object.keys(DISCOUNT_LABEL) as Discount[]).map((d) => ({
@@ -102,18 +102,18 @@ export function PassengerForm({
       </div>
 
       <div className="mt-2 flex items-center justify-between border-t border-ink-100 pt-3">
-        <span className="text-sm text-ink-600">Giá vé</span>
+        <span className="text-sm text-ink-600">Fare</span>
         <span className="flex items-baseline gap-2">
           {discountRate > 0 && (
             <span className="tnum text-sm text-ink-400 line-through">{formatVnd(item.price)}</span>
           )}
-          <span className="tnum font-bold text-son-700">{formatVnd(finalPrice)}</span>
+          <span className="tnum font-bold text-brand-700">{formatVnd(finalPrice)}</span>
         </span>
       </div>
     </fieldset>
   );
 }
 
-/** Giá cuối của một vé sau khi trừ giảm giá — dùng chung giữa form và màn thanh toán */
+/** Final price of one ticket after discount — shared by the form and the payment screen */
 export const finalPriceOf = (item: HoldItem, discount: Discount) =>
   Math.round((item.price * (1 - DISCOUNT_RATE[discount])) / 1000) * 1000;

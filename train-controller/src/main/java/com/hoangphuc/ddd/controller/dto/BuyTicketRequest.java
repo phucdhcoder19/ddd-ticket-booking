@@ -7,14 +7,14 @@ import lombok.Data;
 @Data
 public class BuyTicketRequest {
 
-    @NotNull(message = "ticketId khong duoc trong")
+    @NotNull(message = "ticketId is required")
     private Long ticketId;
 
-    // Chưa có đăng nhập nên client tự gửi. Có auth rồi thì lấy từ token, KHÔNG tin client.
-    @NotNull(message = "userId khong duoc trong")
+    // No login yet, so the client sends it. With auth, take it from the token and DO NOT trust the client.
+    @NotNull(message = "userId is required")
     private Long userId;
 
-    @NotNull(message = "quantity khong duoc trong")
-    @Min(value = 1, message = "quantity phai >= 1")
+    @NotNull(message = "quantity is required")
+    @Min(value = 1, message = "quantity must be >= 1")
     private Integer quantity;
 }

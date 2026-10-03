@@ -7,11 +7,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Nạp sẵn tồn kho lên Redis khi app khởi động.
+ * Preloads stock into Redis when the app starts.
  *
- * Không có bước này thì request ĐẦU TIÊN của mỗi vé sẽ gặp -1 (cache miss)
- * rồi mới warm-up — đúng lúc 20h00 flash sale mở là hàng nghìn request
- * cùng miss một lúc. Nạp trước thì Redis đã sẵn sàng từ trước giờ G.
+ * Without this step, the FIRST request for each ticket hits -1 (cache miss)
+ * and only then warms up — right at 8 PM when the flash sale opens, thousands
+ * of requests miss at the same moment. Preloading means Redis is ready before
+ * the sale starts.
  */
 @Component
 @Slf4j
@@ -20,14 +21,14 @@ public class WarmUpStockJob {
 
     private final StockCacheService stockCacheService;
 
-    // Tạm hardcode id vé để học. Thực tế sẽ SELECT các vé sắp mở bán.
+    // Ticket id hardcoded for learning. In practice, SELECT the tickets about to go on sale.
     private static final Long[] TICKET_IDS = { 1L };
 
     @PostConstruct
     public void warmUpOnStartup() {
         for (Long ticketId : TICKET_IDS) {
             boolean ok = stockCacheService.warmUp(ticketId);
-            log.info("[WARMUP] ticketId={} ket qua={}", ticketId, ok);
+            log.info("[WARMUP] ticketId={} result={}", ticketId, ok);
         }
     }
 }

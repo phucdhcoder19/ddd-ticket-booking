@@ -3,19 +3,20 @@ package com.hoangphuc.ddd.application.model;
 import lombok.Data;
 
 /**
- * Mot cho trong luot giu, kem gia.
+ * One seat in a hold, with its price.
  *
- * Gia duoc tinh lai tu HANH TRINH DA LUU cua luot giu (cap ga + ngay chay),
- * khong tinh lai tu tham so client gui len. Nho vay khach doi tab, F5, hay
- * polling dong ho dem nguoc bao nhieu lan thi van thay dung con so luc chon.
+ * The price is recomputed from the hold's STORED JOURNEY (station pair + service
+ * date), not from parameters sent by the client. So however often the customer
+ * switches tabs, presses F5 or polls the countdown, they see the same number
+ * they saw when picking.
  */
 @Data
 public class HoldItemDTO {
 
-    /** Ma cho "C3-12". */
+    /** Seat code "C3-12". */
     private String seatId;
 
-    /** So hieu cho "12". */
+    /** Seat number "12". */
     private String seatLabel;
 
     private int carriageNumber;

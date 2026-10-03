@@ -24,7 +24,7 @@ public class TicketDetailRepositoryImpl implements TicketDetailRepository {
     @Override
     public int getStockAvailable(Long ticketId) {
         Integer stock = ticketDetailJPAMapper.getStockAvailable(ticketId);
-        return stock == null ? -1 : stock;      // -1 = không tìm thấy vé
+        return stock == null ? -1 : stock;      // -1 = ticket not found
     }
 
     @Override

@@ -3,14 +3,14 @@ import { Button } from "./Button";
 import { friendlyMessage } from "@/api/errors";
 import { cn } from "@/lib/cn";
 
-/** Khối xám bo góc dùng dựng skeleton */
+/** Rounded grey block used to build skeletons */
 export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden className={cn("animate-pulse rounded-lg bg-ink-200/70", className)} />;
 }
 
 /**
- * Vùng chờ tải. Luôn kèm text ẩn cho trình đọc màn hình, vì skeleton thuần
- * hình khối thì người dùng khiếm thị không biết là đang tải hay đã trống.
+ * Loading region. Always includes hidden text for screen readers, because a
+ * shapes-only skeleton cannot tell a blind user whether it is loading or empty.
  */
 export function LoadingRegion({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -35,8 +35,8 @@ export function EmptyState({
 }
 
 /**
- * Hiển thị lỗi theo ngôn ngữ của người dùng, kèm hành động khắc phục.
- * Mọi màn hình dùng chung component này nên cách báo lỗi luôn nhất quán.
+ * Shows errors in the user's language, with an action to fix them.
+ * Every screen uses this component, so errors always look the same.
  */
 export function ErrorState({
   error, onRetry, retryLabel, compact = false,
@@ -46,7 +46,7 @@ export function ErrorState({
     <div
       role="alert"
       className={cn(
-        "rounded-2xl border-2 border-son-200 bg-son-50 text-center",
+        "rounded-2xl border-2 border-brand-200 bg-brand-50 text-center",
         compact ? "px-4 py-4" : "px-6 py-10",
       )}
     >
@@ -55,7 +55,7 @@ export function ErrorState({
       <p className="mx-auto mt-1 max-w-sm text-ink-700">{detail}</p>
       {onRetry && (
         <Button variant="secondary" className="mt-4" onClick={onRetry}>
-          {retryLabel ?? action ?? "Thử lại"}
+          {retryLabel ?? action ?? "Try again"}
         </Button>
       )}
     </div>
@@ -63,19 +63,19 @@ export function ErrorState({
 }
 
 /**
- * Dải băng hiện khi tầng http đang tự động thử lại (429 / timeout).
- * Người dùng cần biết hệ thống VẪN đang làm việc, nếu không họ sẽ bấm lại liên tục.
+ * Banner shown while the http layer retries automatically (429 / timeout).
+ * Users need to know the system is STILL working, otherwise they keep clicking again.
  */
 export function RetryBanner({ attempt, maxAttempts }: { attempt: number; maxAttempts: number }) {
   return (
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center gap-3 rounded-xl border border-mai-300 bg-mai-50 px-4 py-3 text-sm font-medium text-ink-800"
+      className="flex items-center gap-3 rounded-xl border border-accent-300 bg-accent-50 px-4 py-3 text-sm font-medium text-ink-800"
     >
-      <span aria-hidden className="size-2.5 shrink-0 animate-ping rounded-full bg-mai-400" />
+      <span aria-hidden className="size-2.5 shrink-0 animate-ping rounded-full bg-accent-400" />
       <span>
-        Hệ thống đang rất đông, chúng tôi tự động thử lại giúp bạn (lần {attempt}/{maxAttempts}). Xin đừng tắt trang.
+        The system is very busy, we are retrying for you automatically (attempt {attempt}/{maxAttempts}). Please keep this page open.
       </span>
     </div>
   );

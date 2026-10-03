@@ -8,13 +8,13 @@ import java.util.List;
 @Data
 public class TripDTO {
 
-    /** Kieu String vi frontend dung no trong URL. */
+    /** A String because the frontend uses it in URLs. */
     private String id;
 
     private String trainCode;
 
-    /** Ga di/den la CUA CHUYEN DI CUA KHACH, khong phai cua doan tau.
-     *  SE1 chay Ha Noi - Sai Gon, nhung khach co the chi di Hue - Da Nang. */
+    /** Departure/arrival stations of the PASSENGER's journey, not of the train.
+     *  SE1 runs Hanoi - Saigon, but a passenger may only ride Hue - Da Nang. */
     private StationDTO fromStation;
     private StationDTO toStation;
 
@@ -24,6 +24,6 @@ public class TripDTO {
 
     private List<SeatClassOfferDTO> classes;
 
-    /** Tong cho con cua ca chuyen — frontend dung cho nhan "Sap het"/"Het ve". */
+    /** Free places on the whole trip — the frontend uses it for "Almost gone"/"Sold out" badges. */
     private int availableTotal;
 }

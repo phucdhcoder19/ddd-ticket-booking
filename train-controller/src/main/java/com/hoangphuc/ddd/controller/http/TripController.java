@@ -31,9 +31,10 @@ public class TripController {
     /**
      * GET /api/trips?from=HNO&to=SGO&date=2027-01-27
      *
-     * "passengers" cua frontend khong dung o day: so khach chi anh huong
-     * luc GIU CHO, khong doi danh sach chuyen. Nhan vao roi lo di thi tang
-     * duoi phai biet mot tham so vo nghia — thua ra khoi chu ky ham luon.
+     * The frontend's "passengers" is not used here: the number of passengers
+     * only matters when HOLDING, it does not change the trip list. Accepting
+     * and ignoring it would make lower layers carry a meaningless parameter —
+     * so it is left out of the signature.
      */
     @GetMapping
     public ResultMessage<List<TripDTO>> search(
@@ -42,21 +43,22 @@ public class TripController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) @RequestParam("date") LocalDate date) {
 
         List<TripDTO> trips = tripAppService.search(from, to, date);
-        log.info("[CONTROLLER] search trips | {} -> {} ngay {} | tim thay {}", from, to, date, trips.size());
+        log.info("[CONTROLLER] search trips | {} -> {} on {} | found {}", from, to, date, trips.size());
         return ResultUtil.data(trips);
     }
 
     /**
      * GET /api/trips/12/carriages?seatClass=BERTH_4&from=HNO&to=SGO
      *
-     * Vi sao van phai gui lai from/to o day, du vua gui o buoc tim chuyen:
-     * gia TUNG CHO phu thuoc quang duong khach di, ma mot chuyen tau thi
-     * khong biet khach xuong ga nao. Cach duy nhat de bo hai tham so nay la
-     * luu hanh trinh vao phien tren server — doi mot tham so URL lay mot
-     * phien co trang thai, khong dang.
+     * Why from/to must be sent again here, right after the search step: the
+     * price of EACH SEAT depends on the passenger's distance, and a trip does
+     * not know where the passenger gets off. The only way to drop these two
+     * parameters would be storing the journey in a server-side session —
+     * trading a URL parameter for stateful sessions is not worth it.
      *
-     * Chi tra ve cac toa thuoc dung hang cho khach chon. Tra ca 15 toa roi
-     * de frontend loc la bat trinh duyet tai ~1500 ghe de ve 300.
+     * Only carriages of the chosen seat class are returned. Returning all 15
+     * and letting the frontend filter would make the browser download ~1500
+     * seats to draw 300.
      */
     @GetMapping("/{tripId}/carriages")
     public ResultMessage<List<CarriageDTO>> carriages(
@@ -69,9 +71,9 @@ public class TripController {
                 seatMapAppService.carriages(tripId, seatClass, from, to);
 
         if (carriages.isEmpty()) {
-            return ResultUtil.error(404, "Khong tim thay chuyen tau");
+            return ResultUtil.error(404, "Trip not found");
         }
-        log.info("[CONTROLLER] so do cho | chuyen={} hang={} | {} toa",
+        log.info("[CONTROLLER] seat map | trip={} class={} | {} carriages",
                 tripId, seatClass, carriages.get().size());
         return ResultUtil.data(carriages.get());
     }

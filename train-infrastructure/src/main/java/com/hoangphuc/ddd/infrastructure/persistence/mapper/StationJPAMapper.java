@@ -7,6 +7,6 @@ import java.util.List;
 
 public interface StationJPAMapper extends JpaRepository<Station, Long> {
 
-    /** Spring Data tự sinh câu ORDER BY display_order ASC từ chính tên hàm này. */
+    /** Spring Data generates ORDER BY display_order ASC from this method name alone. */
     List<Station> findAllByOrderByDisplayOrderAsc();
 }

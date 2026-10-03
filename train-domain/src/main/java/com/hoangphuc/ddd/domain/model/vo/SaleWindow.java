@@ -3,18 +3,19 @@ package com.hoangphuc.ddd.domain.model.vo;
 import java.time.LocalDateTime;
 
 /**
- * Value object: đợt mở bán đang có hiệu lực.
+ * Value object: the sale window currently in effect.
  *
- * Không có id, không lưu vào bảng nào — nó được TÍNH RA từ các vé đang
- * ACTIVE. Hai SaleWindow cùng giá trị thì là một; đó là dấu hiệu của value
- * object, khác với entity (Station, TicketDetail) vốn phân biệt nhau bằng id.
+ * No id, not stored in any table — it is DERIVED from the ACTIVE tickets. Two
+ * SaleWindows with the same values are the same thing; that is the mark of a
+ * value object, unlike entities (Station, TicketDetail), which are told apart
+ * by their id.
  *
- * @param opensAt giờ mở bán của đợt đang xét
- * @param open    ngay lúc hỏi thì đã mở bán chưa
+ * @param opensAt when the sale window under consideration opens
+ * @param open    whether the sale is already open at the moment of asking
  */
 public record SaleWindow(LocalDateTime opensAt, boolean open) {
 
-    /** Không có vé nào được cấu hình lịch bán — coi như chưa mở. */
+    /** No ticket has a sale schedule configured — treat it as not open. */
     public static SaleWindow closedAt(LocalDateTime now) {
         return new SaleWindow(now, false);
     }

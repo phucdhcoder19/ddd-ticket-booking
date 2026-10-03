@@ -1,15 +1,15 @@
-/** Định dạng tiền VND: 1250000 -> "1.250.000 ₫" */
+/** Format VND: 1250000 -> "₫1,250,000" */
 export function formatVnd(amount: number): string {
-  return new Intl.NumberFormat("vi-VN", {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(amount);
 }
 
-/** "1.250.000" (không kèm ký hiệu, dùng khi đã có nhãn "₫" riêng) */
+/** "1,250,000" (no symbol, used when a separate "₫" label is already shown) */
 export function formatNumber(n: number): string {
-  return new Intl.NumberFormat("vi-VN").format(n);
+  return new Intl.NumberFormat("en-GB").format(n);
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -31,7 +31,7 @@ export function formatDateTime(d: Date | string): string {
   return `${formatTime(d)} ${formatDate(d)}`;
 }
 
-/** "2027-02-06" (khoá dùng cho API & so sánh ngày, luôn theo giờ địa phương) */
+/** "2027-02-06" (key used for the API & date comparison, always in local time) */
 export function toDateKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
@@ -41,7 +41,7 @@ export function fromDateKey(key: string): Date {
   return new Date(y, m - 1, d);
 }
 
-/** ISO string an toàn trên iOS Safari (không dựa vào Date.parse với chuỗi lạ) */
+/** ISO string parsing that is safe on iOS Safari (does not rely on Date.parse with odd strings) */
 export function parseIso(s: string): Date {
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) return d;
@@ -50,22 +50,22 @@ export function parseIso(s: string): Date {
   return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
 }
 
-/** 1050 phút -> "17 giờ 30 phút" */
+/** 1050 minutes -> "17 h 30 min" */
 export function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  if (h === 0) return `${m} phút`;
-  if (m === 0) return `${h} giờ`;
-  return `${h} giờ ${m} phút`;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
 }
 
-/** giây -> "09:58" (đồng hồ giữ chỗ) */
+/** seconds -> "09:58" (hold timer) */
 export function formatClock(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
   return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
 }
 
-/** giây -> "2 ngày 05:12:40" (đếm ngược mở bán) */
+/** seconds -> "2 days 05:12:40" (sale opening countdown) */
 export function formatCountdownParts(totalSeconds: number) {
   const s = Math.max(0, Math.floor(totalSeconds));
   return {
@@ -76,11 +76,11 @@ export function formatCountdownParts(totalSeconds: number) {
   };
 }
 
-const WEEKDAYS = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 export const weekdayLabel = (d: Date) => WEEKDAYS[d.getDay()];
-export const weekdayShort = (d: Date) => ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][d.getDay()];
+export const weekdayShort = (d: Date) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
 
-/** Che bớt CCCD khi hiển thị lại: 001203001234 -> 001•••••1234 */
+/** Mask the ID number when showing it again: 001203001234 -> 001•••••1234 */
 export function maskIdNumber(id: string): string {
   if (id.length < 7) return id;
   return `${id.slice(0, 3)}${"•".repeat(id.length - 7)}${id.slice(-4)}`;

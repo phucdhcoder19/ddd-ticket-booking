@@ -11,11 +11,11 @@ public class OrderResult {
     public enum Status {
         SUCCESS,
         HOLD_NOT_FOUND,
-        /** Tra cuu mot ma don khong ton tai. */
+        /** Looked up an order number that does not exist. */
         ORDER_NOT_FOUND,
-        /** Hold đã hết hạn, đã bị job thu hồi, hoặc đã đổi thành đơn rồi. */
+        /** The hold expired, was released by the job, or has already become an order. */
         HOLD_EXPIRED,
-        /** Chưa nhập đủ hành khách cho từng ghế — hold vẫn còn, khách quay lại nhập được. */
+        /** Not every seat has a passenger yet — the hold is still alive, the customer can go back and fill it in. */
         PASSENGERS_MISSING,
         TICKET_NOT_FOUND,
         ERROR

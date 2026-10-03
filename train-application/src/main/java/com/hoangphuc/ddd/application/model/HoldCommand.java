@@ -3,11 +3,11 @@ package com.hoangphuc.ddd.application.model;
 import java.util.List;
 
 /**
- * Yeu cau giu cho, da gom thanh mot kieu thay vi sau tham so roi.
+ * A hold request, grouped into one type instead of loose parameters.
  *
- * Sau tham so lien tiep trong do co ba chuoi thi doi cho hai cai bat ky la
- * code van bien dich, van chay, chi sai ga. Mot record thi goi sai ten
- * truong la bao loi ngay.
+ * With several consecutive parameters, three of them strings, swapping any two
+ * still compiles and runs — just with the wrong stations. With a record, using
+ * the wrong field name is an immediate error.
  */
 public record HoldCommand(
         Long tripId,
@@ -15,5 +15,7 @@ public record HoldCommand(
         List<String> seatIds,
         String fromCode,
         String toCode,
-        Long userId) {
+        Long userId,
+        /** Waiting room admission token (header X-Queue-Token). Without it, no hold. */
+        String queueToken) {
 }

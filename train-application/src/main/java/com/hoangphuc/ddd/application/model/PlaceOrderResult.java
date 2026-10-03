@@ -7,8 +7,8 @@ import lombok.Getter;
 import java.math.BigDecimal;
 
 /**
- * Kết quả đặt vé trả từ tầng application.
- * Không có mã HTTP ở đây — đổi Status sang 200/409/... là việc của controller.
+ * Purchase result returned by the application layer.
+ * No HTTP codes here — mapping Status to 200/409/... is the controller's job.
  */
 @Getter
 @AllArgsConstructor(access = AccessLevel.PRIVATE)

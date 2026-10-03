@@ -13,12 +13,12 @@ public interface HoldPassengerJPAMapper extends JpaRepository<HoldPassenger, Lon
     List<HoldPassenger> findByHoldIdOrderById(Long holdId);
 
     /**
-     * Xoá bằng một câu DELETE, không phải deleteAll(findBy...).
+     * Delete with one DELETE statement, not deleteAll(findBy...).
      *
-     * Không chỉ để nhanh: câu JPQL chạy XUỐNG DB NGAY, còn remove() của
-     * Hibernate thì đợi tới lúc flush — mà Hibernate flush INSERT trước
-     * DELETE. Dòng mới cho ghế C3-12 sẽ đụng unique (holdId, seatCode) với
-     * chính dòng cũ chưa kịp xoá.
+     * Not only for speed: the JPQL statement hits the DB IMMEDIATELY, while
+     * Hibernate's remove() waits until flush — and Hibernate flushes INSERTs
+     * before DELETEs. The new row for seat C3-12 would then collide on the
+     * unique (holdId, seatCode) with the old row that has not been deleted yet.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM HoldPassenger p WHERE p.holdId = :holdId")

@@ -30,7 +30,7 @@ public class TicketController {
 
         TicketDetailDTO dto = ticketAppService.getTicketDetail(ticketId);
         if (dto == null) {
-            return ResultUtil.error(404, "Khong tim thay ve");
+            return ResultUtil.error(404, "Ticket not found");
         }
         return ResultUtil.data(dto);
     }
@@ -43,14 +43,14 @@ public class TicketController {
         PlaceOrderResult result = ticketAppService.placeOrder(
                 request.getTicketId(), request.getUserId(), request.getQuantity());
 
-        // Chỉ controller mới biết mã HTTP
+        // Only the controller knows about HTTP codes
         return switch (result.getStatus()) {
             case SUCCESS          -> ResultUtil.data(result);
-            case OUT_OF_STOCK     -> ResultUtil.error(409, "Het ve");
-            case NOT_ON_SALE      -> ResultUtil.error(409, "Ve chua mo ban");
-            case SALE_ENDED       -> ResultUtil.error(409, "Da het gio ban");
-            case TICKET_NOT_FOUND -> ResultUtil.error(404, "Khong tim thay ve");
-            case ERROR            -> ResultUtil.error(500, "Loi he thong, vui long thu lai");
+            case OUT_OF_STOCK     -> ResultUtil.error(409, "Sold out");
+            case NOT_ON_SALE      -> ResultUtil.error(409, "This ticket is not on sale yet");
+            case SALE_ENDED       -> ResultUtil.error(409, "The sale has ended");
+            case TICKET_NOT_FOUND -> ResultUtil.error(404, "Ticket not found");
+            case ERROR            -> ResultUtil.error(500, "System error, please try again");
         };
     }
 }

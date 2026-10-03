@@ -5,10 +5,11 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 /**
- * Ga tàu trên trục Bắc – Nam.
+ * A station on the North–South line.
  *
- * Bảng tra cứu thuần: gần như không bao giờ đổi, không có nghiệp vụ nào
- * ngoài "liệt kê cho người dùng chọn". Đúng loại dữ liệu nên cache mạnh tay.
+ * Pure lookup table: almost never changes, and there is no business logic
+ * beyond "list them for the user to pick". Exactly the kind of data to cache
+ * aggressively.
  */
 @Data
 @Accessors(chain = true)
@@ -20,21 +21,21 @@ public class Station {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Mã ga viết tắt dùng trong URL và mã vé: HNO, SGO... */
+    /** Short station code used in URLs and ticket codes: HNO, SGO... */
     @Column(nullable = false, unique = true, length = 8)
     private String code;
 
     @Column(nullable = false, length = 64)
     private String name;
 
-    /** "Bắc" | "Trung" | "Nam" — gom nhóm cho dễ tìm trong danh sách dài */
+    /** "North" | "Central" | "South" — groups a long list so it is easier to scan */
     @Column(nullable = false, length = 8)
     private String region;
 
-    /** Cây số tính từ ga Hà Nội. Dùng để ước lượng quãng đường và giá vé. */
+    /** Kilometres from Hanoi station. Used to estimate distance and fare. */
     private int kmFromHanoi;
 
-    /** Thứ tự ga trên trục Bắc – Nam. Danh sách LUÔN sắp theo cột này,
-     *  không sắp theo tên — người đi tàu nghĩ theo thứ tự tuyến. */
+    /** Position on the North–South line. Lists are ALWAYS sorted by this column,
+     *  not by name — travellers think in route order. */
     private int displayOrder;
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
-import { ApiError } from "@/api/errors";
+import { ApiError, friendlyMessage } from "@/api/errors";
+import { clearQueuePass } from "@/lib/queuePass";
 import { SEAT_CLASS_LABEL, type Carriage, type Seat } from "@/api/types";
 import { SeatMap, SeatMapSkeleton } from "@/components/SeatMap";
 import { StickyActionBar } from "@/components/TrainCard";
@@ -17,17 +18,17 @@ import { formatTime, formatVnd } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 /**
- * Màn 4 — Chọn toa và ghế.
+ * Screen 4 — Pick a carriage and seats.
  *
- * Tình huống khó nhất của cả luồng: giữa lúc người dùng đang ngắm sơ đồ thì
- * ghế bị người khác lấy mất. Cách xử lý ở đây:
+ * The hardest situation in the whole flow: while the user is studying the
+ * map, someone else takes the seat. How it is handled here:
  *
- *  - Sơ đồ tự làm mới ngầm mỗi 6 giây, GIỮ NGUYÊN các ghế người dùng đang chọn.
- *  - Khi bấm "Giữ chỗ" mà server trả 409 SEAT_TAKEN: không hiện hộp thoại lỗi
- *    đỏ chót. Thay vào đó bỏ chọn đúng những ghế đã mất, đánh dấu chúng nhấp
- *    nháy, làm nổi các ghế server gợi ý, và báo bằng toast giọng nhẹ nhàng.
- *    Ghế nào giữ được thì vẫn giữ nguyên lựa chọn.
- *  - Nút "Giữ chỗ" khoá chống double-click và gắn Idempotency-Key.
+ *  - The map refreshes silently every 6 seconds, KEEPING the user's selection.
+ *  - When "Hold" gets a 409 SEAT_TAKEN from the server: no glaring red error
+ *    dialog. Instead, deselect exactly the lost seats, make them pulse,
+ *    highlight the seats the server suggests, and say so in a gentle toast.
+ *    Seats that could be held stay selected.
+ *  - The "Hold" button is locked against double-clicks and carries an Idempotency-Key.
  */
 export function SeatSelectionPage() {
   const navigate = useNavigate();
@@ -43,7 +44,7 @@ export function SeatSelectionPage() {
   const maxSeats = query?.passengers ?? 1;
 
   useEffect(() => {
-    if (!trip || !seatClass || trip.id !== tripId) navigate("/chuyen-tau", { replace: true });
+    if (!trip || !seatClass || trip.id !== tripId) navigate("/trips", { replace: true });
   }, [trip, seatClass, tripId, navigate]);
 
   const carriages = useAsync(
@@ -54,7 +55,7 @@ export function SeatSelectionPage() {
     [tripId, seatClass, query],
   );
 
-  // Làm mới ngầm sơ đồ ghế
+  // Silently refresh the seat map
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void carriages.refreshSilently();
@@ -66,7 +67,7 @@ export function SeatSelectionPage() {
   const list = carriages.data ?? [];
   const carriage = list[carriageIndex];
 
-  // Ghế đang chọn mà bị người khác giữ mất trong lúc làm mới ngầm → bỏ chọn và báo
+  // A selected seat taken by someone else during a silent refresh → deselect it and tell the user
   useEffect(() => {
     if (!carriage || selected.length === 0) return;
     const byId = new Map(list.flatMap((c) => c.seats).map((s) => [s.id, s]));
@@ -76,8 +77,8 @@ export function SeatSelectionPage() {
     setJustTaken(lost.map((s) => s.id));
     toast.show({
       tone: "warning",
-      title: lost.length === 1 ? `Chỗ ${lost[0].label} vừa có người giữ` : `${lost.length} chỗ bạn chọn vừa có người giữ`,
-      detail: "Bạn chọn giúp chỗ khác nhé, các chỗ trống được tô viền xanh.",
+      title: lost.length === 1 ? `Seat ${lost[0].label} was just taken` : `${lost.length} of your seats were just taken`,
+      detail: "Please choose other seats, free seats have a green border.",
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
@@ -113,17 +114,17 @@ export function SeatSelectionPage() {
         { idempotencyKey },
       );
       setHold(hold);
-      navigate("/thong-tin-hanh-khach");
+      navigate("/passengers");
     } catch (e) {
       handleHoldError(e);
       throw e;
     }
   });
 
-  /** Biến lỗi giữ chỗ thành hành động cụ thể thay vì một thông báo cụt lủn */
+  /** Turn a hold error into a concrete next step instead of a curt message */
   function handleHoldError(e: unknown) {
     if (!(e instanceof ApiError)) {
-      toast.show({ tone: "error", title: "Chưa giữ được chỗ", detail: "Bạn thử lại giúp chúng tôi nhé." });
+      toast.show({ tone: "error", title: "Could not hold your seats", detail: "Please try again." });
       return;
     }
     if (e.kind === "SEAT_TAKEN") {
@@ -133,35 +134,45 @@ export function SeatSelectionPage() {
       setSelected((prev) => prev.filter((s) => !taken.includes(s.id)));
       setJustTaken(taken);
       setSuggested(suggest);
-      resetKey(); // lần giữ tới là một thao tác mới với danh sách ghế khác
+      resetKey(); // the next hold is a new action with a different seat list
       void carriages.refreshSilently();
       toast.show({
         tone: "warning",
-        title: taken.length === 1 ? "Chỗ này vừa có người giữ mất" : `${taken.length} chỗ vừa có người giữ mất`,
+        title: taken.length === 1 ? "Someone just took this seat" : `${taken.length} seats were just taken`,
         detail: suggest.length
-          ? "Chúng tôi đã đánh dấu vài chỗ trống gần đó, bạn chọn lại giúp nhé."
-          : "Bạn chọn chỗ khác trên sơ đồ giúp nhé.",
+          ? "We have marked a few free seats nearby, please pick again."
+          : "Please pick other seats on the map.",
         durationMs: 7000,
       });
+      return;
+    }
+    if (e.kind === "NOT_ADMITTED") {
+      // The admission expired (over 15 minutes) or the user never queued: drop
+      // the old pass and go back to the waiting room. The trip choice is still in
+      // BookingContext, so once admitted again the user lands right back here.
+      clearQueuePass();
+      const msg = friendlyMessage(e);
+      toast.show({ tone: "warning", title: msg.title, detail: msg.detail, durationMs: 7000 });
+      navigate("/waiting-room", { replace: true });
       return;
     }
     if (e.kind === "SOLD_OUT") {
       toast.show({
         tone: "error",
-        title: "Hạng chỗ này vừa hết vé",
-        detail: "Bạn quay lại chọn hạng chỗ khác hoặc chuyến khác nhé.",
+        title: "This seat class just sold out",
+        detail: "Please go back and choose another class or another trip.",
       });
       return;
     }
     if (e.kind === "OVERLOADED") {
       toast.show({
         tone: "warning",
-        title: "Hệ thống đang rất đông",
-        detail: "Chúng tôi đã thử lại vài lần nhưng chưa được. Bạn đợi vài giây rồi bấm lại nhé.",
+        title: "The system is very busy",
+        detail: "We retried a few times without success. Please wait a few seconds and try again.",
       });
       return;
     }
-    toast.show({ tone: "error", title: "Chưa giữ được chỗ", detail: "Bạn thử lại giúp chúng tôi nhé." });
+    toast.show({ tone: "error", title: "Could not hold your seats", detail: "Please try again." });
   }
 
   if (!trip || !seatClass) return null;
@@ -170,16 +181,16 @@ export function SeatSelectionPage() {
     <div className="flex flex-col gap-4">
       <Stepper current={1} />
 
-      {/* Tóm tắt chuyến đang chọn, luôn nhìn thấy */}
+      {/* Summary of the chosen trip, always visible */}
       <div className="rounded-2xl border border-ink-200 bg-white px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="rounded-lg bg-son-600 px-2 py-0.5 text-sm font-bold text-white">{trip.trainCode}</span>
+          <span className="rounded-lg bg-brand-600 px-2 py-0.5 text-sm font-bold text-white">{trip.trainCode}</span>
           <span className="font-semibold text-ink-900">
             {trip.fromStation.name} → {trip.toStation.name}
           </span>
         </div>
         <p className="mt-1 text-sm text-ink-600">
-          Khởi hành {formatTime(trip.departAt)} · {SEAT_CLASS_LABEL[seatClass]} · Chọn {maxSeats} chỗ
+          Departs {formatTime(trip.departAt)} · {SEAT_CLASS_LABEL[seatClass]} · Pick {maxSeats} {maxSeats === 1 ? "seat" : "seats"}
         </p>
       </div>
 
@@ -188,7 +199,7 @@ export function SeatSelectionPage() {
       )}
 
       {carriages.loading && carriages.isInitialLoad ? (
-        <LoadingRegion label="Đang tải sơ đồ toa tàu…">
+        <LoadingRegion label="Loading the carriage map…">
           <SeatMapSkeleton />
         </LoadingRegion>
       ) : carriages.error && list.length === 0 ? (
@@ -196,16 +207,16 @@ export function SeatSelectionPage() {
       ) : list.length === 0 ? (
         <EmptyState
           icon="🚃"
-          title="Chưa có sơ đồ chỗ cho hạng này"
-          detail="Bạn quay lại chọn hạng chỗ khác giúp chúng tôi nhé."
-          action={<Button onClick={() => navigate("/chuyen-tau")}>Chọn hạng khác</Button>}
+          title="No seat map for this class yet"
+          detail="Please go back and choose another seat class."
+          action={<Button onClick={() => navigate("/trips")}>Choose another class</Button>}
         />
       ) : (
         <>
-          {/* Chọn toa */}
+          {/* Carriage picker */}
           <div>
-            <p className="mb-1.5 text-sm font-semibold text-ink-800">Chọn toa</p>
-            <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Danh sách toa">
+            <p className="mb-1.5 text-sm font-semibold text-ink-800">Choose a carriage</p>
+            <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Carriages">
               {list.map((c, i) => {
                 const active = i === carriageIndex;
                 const full = c.available === 0;
@@ -219,13 +230,13 @@ export function SeatSelectionPage() {
                     onClick={() => setCarriageIndex(i)}
                     className={cn(
                       "min-h-16 shrink-0 rounded-2xl border-2 px-4 py-2 text-center transition-colors",
-                      active ? "border-son-600 bg-son-50" : "border-ink-200 bg-white hover:border-ink-300",
+                      active ? "border-brand-600 bg-brand-50" : "border-ink-200 bg-white hover:border-ink-300",
                       full && "cursor-not-allowed opacity-55",
                     )}
                   >
-                    <div className="font-bold text-ink-900">Toa {c.number}</div>
-                    <div className={cn("text-xs font-medium", c.available === 0 ? "text-ink-500" : c.available <= 8 ? "text-son-700" : "text-ok-600")}>
-                      {c.available === 0 ? "Hết chỗ" : `Còn ${c.available} chỗ`}
+                    <div className="font-bold text-ink-900">Carriage {c.number}</div>
+                    <div className={cn("text-xs font-medium", c.available === 0 ? "text-ink-500" : c.available <= 8 ? "text-brand-700" : "text-ok-600")}>
+                      {c.available === 0 ? "Full" : `${c.available} seats left`}
                     </div>
                   </button>
                 );
@@ -245,8 +256,8 @@ export function SeatSelectionPage() {
           )}
 
           {suggested.length > 0 && (
-            <div role="status" className="rounded-2xl border-2 border-mai-300 bg-mai-50 px-4 py-3">
-              <p className="font-semibold text-ink-900">Gợi ý chỗ trống gần đó</p>
+            <div role="status" className="rounded-2xl border-2 border-accent-300 bg-accent-50 px-4 py-3">
+              <p className="font-semibold text-ink-900">Free seats nearby</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {suggested.map((id) => {
                   const seat = list.flatMap((c) => c.seats).find((s) => s.id === id);
@@ -260,10 +271,10 @@ export function SeatSelectionPage() {
                         if (idx >= 0) setCarriageIndex(idx);
                         toggleSeat(seat);
                       }}
-                      className="min-h-11 rounded-xl border-2 border-mai-400 bg-white px-3 font-semibold text-ink-900 hover:bg-mai-100"
+                      className="min-h-11 rounded-xl border-2 border-accent-400 bg-white px-3 font-semibold text-ink-900 hover:bg-accent-100"
                     >
-                      Chỗ {seat.label}
-                      {seat.berthLevel ? ` · tầng ${seat.berthLevel}` : ""}
+                      Seat {seat.label}
+                      {seat.berthLevel ? ` · level ${seat.berthLevel}` : ""}
                     </button>
                   );
                 })}
@@ -276,15 +287,15 @@ export function SeatSelectionPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm text-ink-600">
-                    Đã chọn <span className="font-semibold text-ink-900">{selected.length}/{maxSeats}</span> chỗ
+                    Selected <span className="font-semibold text-ink-900">{selected.length}/{maxSeats}</span> seats
                   </p>
                   <div className="mt-0.5 flex flex-wrap gap-1">
                     {selected.map((s) => (
-                      <Badge key={s.id} tone="son">Toa {carriage?.number} · chỗ {s.label}</Badge>
+                      <Badge key={s.id} tone="brand">Carriage {carriage?.number} · seat {s.label}</Badge>
                     ))}
                   </div>
                 </div>
-                <p className="tnum shrink-0 text-lg font-bold text-son-700">{formatVnd(total)}</p>
+                <p className="tnum shrink-0 text-lg font-bold text-brand-700">{formatVnd(total)}</p>
               </div>
             }
           >
@@ -292,13 +303,13 @@ export function SeatSelectionPage() {
               size="lg"
               fullWidth
               loading={holding}
-              loadingText="Đang giữ chỗ cho bạn…"
+              loadingText="Holding your seats…"
               disabled={selected.length !== maxSeats}
               onClick={() => void holdSeats().catch(() => {})}
             >
               {selected.length === maxSeats
-                ? `Giữ ${maxSeats} chỗ trong 10 phút`
-                : `Chọn thêm ${maxSeats - selected.length} chỗ`}
+                ? `Hold ${maxSeats} ${maxSeats === 1 ? "seat" : "seats"} for 10 minutes`
+                : `Pick ${maxSeats - selected.length} more ${maxSeats - selected.length === 1 ? "seat" : "seats"}`}
             </Button>
           </StickyActionBar>
         </>

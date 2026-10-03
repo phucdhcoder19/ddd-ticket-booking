@@ -8,19 +8,20 @@ import { formatDate, formatTime, formatVnd, maskIdNumber, weekdayLabel, parseIso
 import { cn } from "@/lib/cn";
 
 const STATUS: Record<TicketStatus, { label: string; tone: "ok" | "muted" | "warn" | "info" }> = {
-  VALID: { label: "Còn hiệu lực", tone: "ok" },
-  USED: { label: "Đã sử dụng", tone: "muted" },
-  REFUNDED: { label: "Đã trả vé", tone: "muted" },
-  EXCHANGING: { label: "Đang đổi vé", tone: "warn" },
+  VALID: { label: "Valid", tone: "ok" },
+  USED: { label: "Used", tone: "muted" },
+  REFUNDED: { label: "Refunded", tone: "muted" },
+  EXCHANGING: { label: "Being exchanged", tone: "warn" },
 };
 
 /**
- * Thẻ vé.
+ * Ticket card.
  *
- * Mã QR hiện luôn ở kích thước lớn ngay trên thẻ chứ không giấu sau một lần
- * bấm: ở cửa soát vé, người dùng cần chìa màn hình ra trong một giây, và sóng
- * ở ga tàu ngày Tết thì rất yếu. Vé đã trả hoặc đã dùng thì QR mờ đi và có
- * dải chữ đè lên, để không ai chìa nhầm vé cũ.
+ * The QR code is always shown large right on the card instead of behind a
+ * tap: at the ticket gate people need to hold out their screen within a
+ * second, and the signal at a station during the holidays is very weak.
+ * Refunded or used tickets get a faded QR with a label across it, so nobody
+ * shows an old ticket by mistake.
  */
 export function TicketCard({
   ticket, onRefund, refunding,
@@ -34,11 +35,11 @@ export function TicketCard({
     <article
       className={cn(
         "overflow-hidden rounded-2xl border bg-white shadow-[var(--shadow-soft)]",
-        inactive ? "border-ink-200 opacity-80" : "border-son-200",
+        inactive ? "border-ink-200 opacity-80" : "border-brand-200",
       )}
-      aria-label={`Vé ${ticket.code}, tàu ${ticket.trainCode}`}
+      aria-label={`Ticket ${ticket.code}, train ${ticket.trainCode}`}
     >
-      <div className="bg-mai-pattern flex items-center justify-between gap-2 bg-son-700 px-4 py-2.5 text-white">
+      <div className="flex items-center justify-between gap-2 bg-brand-700 px-4 py-2.5 text-white">
         <span className="font-bold">{ticket.trainCode}</span>
         <Badge tone={status.tone} className="border-white/30 bg-white/15 text-white">{status.label}</Badge>
       </div>
@@ -53,21 +54,21 @@ export function TicketCard({
             {ticket.fromStation} → {ticket.toStation}
           </p>
           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-            <Item label="Toa" value={String(ticket.carriageNumber)} />
-            <Item label="Chỗ" value={ticket.seatLabel} />
-            <Item label="Loại chỗ" value={SEAT_CLASS_SHORT[ticket.seatClass]} />
-            <Item label="Giá vé" value={formatVnd(ticket.price)} />
+            <Item label="Carriage" value={String(ticket.carriageNumber)} />
+            <Item label="Seat" value={ticket.seatLabel} />
+            <Item label="Class" value={SEAT_CLASS_SHORT[ticket.seatClass]} />
+            <Item label="Fare" value={formatVnd(ticket.price)} />
           </dl>
           <p className="mt-2 truncate text-sm font-semibold text-ink-900">{ticket.passengerName}</p>
           {ticket.passengerId && (
-            <p className="tnum text-xs text-ink-500">CCCD {maskIdNumber(ticket.passengerId)}</p>
+            <p className="tnum text-xs text-ink-500">ID {maskIdNumber(ticket.passengerId)}</p>
           )}
         </div>
 
         <button
           type="button"
           onClick={() => setZoomed((v) => !v)}
-          aria-label={zoomed ? "Thu nhỏ mã QR" : "Phóng to mã QR để soát vé"}
+          aria-label={zoomed ? "Shrink the QR code" : "Enlarge the QR code for the ticket check"}
           className="relative shrink-0 rounded-xl border-2 border-ink-200 bg-white p-1.5"
         >
           <QRCodeSVG
@@ -79,7 +80,7 @@ export function TicketCard({
           {inactive && (
             <span className="absolute inset-0 grid place-items-center">
               <span className="rotate-[-12deg] rounded-md bg-ink-800 px-2 py-0.5 text-[10px] font-bold text-white">
-                {ticket.status === "REFUNDED" ? "ĐÃ TRẢ" : "ĐÃ DÙNG"}
+                {ticket.status === "REFUNDED" ? "REFUNDED" : "USED"}
               </span>
             </span>
           )}
@@ -87,20 +88,20 @@ export function TicketCard({
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t border-dashed border-ink-200 bg-ink-50 px-4 py-2.5">
-        <span className="tnum text-xs text-ink-500">Mã vé {ticket.code}</span>
+        <span className="tnum text-xs text-ink-500">Ticket code {ticket.code}</span>
         {ticket.status === "VALID" && onRefund && (
           <div className="flex gap-2">
-            <Button variant="ghost" className="min-h-10 px-3 text-sm" onClick={() => alert("Chức năng đổi vé đang được hoàn thiện.")}>
-              Đổi vé
+            <Button variant="ghost" className="min-h-10 px-3 text-sm" onClick={() => alert("Ticket exchange is still being built.")}>
+              Exchange
             </Button>
             <Button
               variant="danger"
               className="min-h-10 px-3 text-sm"
               loading={refunding}
-              loadingText="Đang xử lý…"
+              loadingText="Processing…"
               onClick={() => onRefund(ticket)}
             >
-              Trả vé
+              Refund
             </Button>
           </div>
         )}

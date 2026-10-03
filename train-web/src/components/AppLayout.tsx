@@ -4,35 +4,36 @@ import { cn } from "@/lib/cn";
 import { IconChevronDown, IconLogin, IconPercent } from "@/components/ui/Icon";
 
 /**
- * Khung ứng dụng theo bố cục Traveloka:
- *   Hàng 1 — logo, tiền tệ/ngôn ngữ, các mục phụ, nút Đăng nhập/Đăng ký
- *   Hàng 2 — thanh sản phẩm (Vé tàu, Vé xe khách, Khách sạn...)
+ * App shell following Traveloka's layout:
+ *   Row 1 — logo, currency/language, secondary links, Sign in/Register buttons
+ *   Row 2 — product bar (Train tickets, Bus tickets, Hotels...)
  *
- * Trang chủ chạy tràn viền (hero full-bleed), các trang còn lại vẫn là một
- * cột đọc hẹp 640px như cũ.
+ * The home page runs edge to edge (full-bleed hero); every other page keeps
+ * the narrow 640px reading column.
  */
 
 const PRODUCTS = [
-  { to: "/", label: "Vé tàu", end: true },
-  { to: "/chuyen-tau", label: "Vé xe khách", end: false },
-  { to: "/chuyen-tau", label: "Khách sạn", end: false },
-  { to: "/chuyen-tau", label: "Đưa đón ga", end: false },
-  { to: "/chuyen-tau", label: "Cho thuê xe", end: false },
-  { to: "/chuyen-tau", label: "Hoạt động & Vui chơi", end: false },
+  { to: "/", label: "Train tickets", end: true },
+  { to: "/trips", label: "Bus tickets", end: false },
+  { to: "/trips", label: "Hotels", end: false },
+  { to: "/trips", label: "Station transfers", end: false },
+  { to: "/trips", label: "Car rental", end: false },
+  { to: "/trips", label: "Things to do", end: false },
 ];
 
-/** Cao bằng đúng hai hàng của header — dùng để kéo hero chui lên dưới nó. */
+/** Exactly the height of the two header rows — used to pull the hero up underneath it. */
 const HEADER_HEIGHT = 108;
 
 export function AppLayout() {
   const { pathname } = useLocation();
-  // Phòng chờ chiếm trọn màn hình, không có điều hướng để người dùng không bỏ lượt
-  const bare = pathname.startsWith("/phong-cho");
+  // The waiting room takes the whole screen with no navigation, so users do not lose their place
+  const bare = pathname.startsWith("/waiting-room");
   const wide = pathname === "/";
 
   /**
-   * Trang chủ: header trong suốt nằm ĐÈ lên ảnh hero, cuộn xuống mới hiện nền
-   * trắng. Các trang khác luôn nền trắng vì không có ảnh để đè lên.
+   * Home page: the transparent header sits ON TOP of the hero image and only
+   * turns white after scrolling. Other pages are always white, as there is no
+   * image underneath.
    */
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -48,10 +49,10 @@ export function AppLayout() {
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
       <a
-        href="#noi-dung"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:text-son-700"
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:text-brand-700"
       >
-        Bỏ qua, tới nội dung chính
+        Skip to main content
       </a>
 
       <header
@@ -60,34 +61,34 @@ export function AppLayout() {
           onImage ? "bg-transparent" : "bg-white shadow-[var(--shadow-soft)]",
         )}
       >
-        {/* Hàng 1 */}
+        {/* Row 1 */}
         <div className={onImage ? "bg-swoosh-dark" : "bg-brand-swoosh"}>
           <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-6 px-4 sm:px-6">
-            <NavLink to="/" className="shrink-0 rounded-lg" aria-label="Vé Tàu Tết — về trang chủ">
+            <NavLink to="/" className="shrink-0 rounded-lg" aria-label="traintix — back to the home page">
               <Wordmark light={onImage} />
             </NavLink>
 
             <nav
-              aria-label="Liên kết phụ"
+              aria-label="Secondary links"
               className={cn(
                 "hidden flex-1 items-center gap-5 text-sm font-semibold lg:flex",
                 onImage ? "text-white" : "text-ink-800",
               )}
             >
               <button type="button" className="flex items-center gap-1.5 rounded-lg hover:opacity-80">
-                <span aria-hidden className="text-base leading-none">🇻🇳</span>
-                VND | VI
+                <span aria-hidden className="text-base leading-none">🌐</span>
+                VND | EN
                 <IconChevronDown size={14} />
               </button>
               <button type="button" className="flex items-center gap-1.5 rounded-lg hover:opacity-80">
                 <IconPercent size={18} className={onImage ? "text-white" : "text-ok-600"} />
-                Khuyến mãi
+                Deals
               </button>
-              <button type="button" className="rounded-lg hover:opacity-80">Hợp tác với chúng tôi</button>
+              <button type="button" className="rounded-lg hover:opacity-80">Partner with us</button>
               <button type="button" className="flex items-center gap-1 rounded-lg hover:opacity-80">
-                Hỗ trợ <IconChevronDown size={14} />
+                Support <IconChevronDown size={14} />
               </button>
-              <NavLink to="/ve-cua-toi" className="rounded-lg hover:opacity-80">Đặt chỗ của tôi</NavLink>
+              <NavLink to="/my-tickets" className="rounded-lg hover:opacity-80">My bookings</NavLink>
             </nav>
 
             <div className="ml-auto flex items-center gap-2 lg:ml-0">
@@ -97,26 +98,26 @@ export function AppLayout() {
                   "hidden rounded-full px-5 py-2 text-sm font-bold sm:block",
                   onImage
                     ? "bg-white/15 text-white ring-1 ring-white/50 hover:bg-white/25"
-                    : "border border-son-200 bg-son-50 text-son-700 hover:bg-son-100",
+                    : "border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100",
                 )}
               >
                 <span className="flex items-center gap-1.5">
-                  Đăng nhập <IconLogin size={16} />
+                  Sign in <IconLogin size={16} />
                 </span>
               </button>
               <button
                 type="button"
-                className="rounded-full bg-son-500 px-5 py-2 text-sm font-bold text-white hover:bg-son-600"
+                className="rounded-full bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600"
               >
-                Đăng ký
+                Register
               </button>
             </div>
           </div>
         </div>
 
-        {/* Hàng 2 — thanh sản phẩm */}
+        {/* Row 2 — product bar */}
         <nav
-          aria-label="Sản phẩm"
+          aria-label="Products"
           className={cn(onImage ? "" : "border-t border-ink-100")}
         >
           <ul className="no-scrollbar mx-auto flex max-w-[1200px] gap-1 overflow-x-auto px-4 sm:px-6">
@@ -131,8 +132,8 @@ export function AppLayout() {
                       onImage
                         ? "text-white hover:text-white/80"
                         : isActive && i === 0
-                          ? "text-son-600"
-                          : "text-ink-700 hover:text-son-600",
+                          ? "text-brand-600"
+                          : "text-ink-700 hover:text-brand-600",
                     )
                   }
                 >
@@ -145,11 +146,11 @@ export function AppLayout() {
                 type="button"
                 className={cn(
                   "whitespace-nowrap rounded-lg px-3 py-3 text-sm font-semibold",
-                  onImage ? "text-white hover:text-white/80" : "text-ink-700 hover:text-son-600",
+                  onImage ? "text-white hover:text-white/80" : "text-ink-700 hover:text-brand-600",
                 )}
               >
                 <span className="flex items-center gap-1">
-                  Thêm <IconChevronDown size={14} />
+                  More <IconChevronDown size={14} />
                 </span>
               </button>
             </li>
@@ -158,7 +159,7 @@ export function AppLayout() {
       </header>
 
       <main
-        id="noi-dung"
+        id="main-content"
         className={cn("w-full flex-1", wide ? "" : "mx-auto max-w-2xl px-4 pb-6 pt-4 sm:px-6")}
         style={wide ? { marginTop: -HEADER_HEIGHT } : undefined}
       >
@@ -170,12 +171,12 @@ export function AppLayout() {
   );
 }
 
-/** Logo chữ + cánh chim, dựng bằng SVG nên nét ở mọi độ phân giải */
+/** Text logo + wing, drawn in SVG so it stays crisp at any resolution */
 function Wordmark({ light = false }: { light?: boolean }) {
   return (
     <span className="flex items-baseline gap-1">
-      <span className={cn("text-[26px] font-bold leading-none tracking-tight", light ? "text-white" : "text-son-900")}>
-        vétàu
+      <span className={cn("text-[26px] font-bold leading-none tracking-tight", light ? "text-white" : "text-brand-900")}>
+        traintix
       </span>
       <svg width="22" height="16" viewBox="0 0 22 16" aria-hidden className="translate-y-[-3px]">
         <path d="M1 11c6-1 9-4 12-8 1 3 0 5-2 7 3-1 6-3 9-6-1 6-6 11-12 11-3 0-6-2-7-4z" fill="#0194f3" />
@@ -186,21 +187,21 @@ function Wordmark({ light = false }: { light?: boolean }) {
 
 const FOOTER_COLS = [
   {
-    title: "Về chúng tôi",
-    links: ["Cách đặt chỗ", "Liên hệ chúng tôi", "Trợ giúp", "Tuyển dụng", "Về Vé Tàu Tết"],
+    title: "About us",
+    links: ["How to book", "Contact us", "Help centre", "Careers", "About traintix"],
   },
   {
-    title: "Sản phẩm",
-    links: ["Vé tàu", "Vé xe khách", "Khách sạn", "Đưa đón ga", "Cho thuê xe", "Hoạt động & Vui chơi"],
+    title: "Products",
+    links: ["Train tickets", "Bus tickets", "Hotels", "Station transfers", "Car rental", "Things to do"],
   },
   {
-    title: "Khác",
+    title: "Other",
     links: [
-      "Chính sách bảo mật",
-      "Điều khoản & Điều kiện",
-      "Đăng ký nơi nghỉ của bạn",
-      "Khu vực báo chí",
-      "Quy chế hoạt động",
+      "Privacy policy",
+      "Terms & Conditions",
+      "List your property",
+      "Press room",
+      "Operating regulations",
     ],
   },
 ];
@@ -222,13 +223,13 @@ const SOCIALS = [
 
 function SiteFooter() {
   return (
-    <footer className="mt-12 bg-son-900 text-ink-100">
+    <footer className="mt-12 bg-brand-900 text-ink-100">
       <div className="mx-auto grid max-w-[1200px] gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        {/* Cột thương hiệu */}
+        {/* Brand column */}
         <div>
           <Wordmark light />
           <div className="mt-5 flex flex-wrap gap-2">
-            {["IATA", "ISO 27001", "Đã đăng ký Bộ Công Thương"].map((c) => (
+            {["IATA", "ISO 27001", "Registered with the Ministry of Industry and Trade"].map((c) => (
               <span
                 key={c}
                 className="rounded border border-white/25 px-2.5 py-1 text-[11px] font-semibold text-white/80"
@@ -238,7 +239,7 @@ function SiteFooter() {
             ))}
           </div>
 
-          <h3 className="mt-8 text-sm font-bold text-white">Đối tác thanh toán</h3>
+          <h3 className="mt-8 text-sm font-bold text-white">Payment partners</h3>
           <ul className="mt-3 grid grid-cols-4 gap-1.5">
             {PAYMENT_PARTNERS.map((p) => (
               <li
@@ -264,9 +265,9 @@ function SiteFooter() {
               ))}
             </ul>
 
-            {col.title === "Sản phẩm" && (
+            {col.title === "Products" && (
               <>
-                <h3 className="mt-8 text-sm font-bold text-white">Theo dõi chúng tôi trên</h3>
+                <h3 className="mt-8 text-sm font-bold text-white">Follow us on</h3>
                 <ul className="mt-3 space-y-2.5 text-sm">
                   {SOCIALS.map((s) => (
                     <li key={s.label}>
@@ -285,9 +286,9 @@ function SiteFooter() {
               </>
             )}
 
-            {col.title === "Khác" && (
+            {col.title === "Other" && (
               <>
-                <h3 className="mt-8 text-sm font-bold text-white">Tải ứng dụng Vé Tàu Tết</h3>
+                <h3 className="mt-8 text-sm font-bold text-white">Get the traintix app</h3>
                 <div className="mt-3 flex flex-col gap-2">
                   {[
                     { top: "GET IT ON", bottom: "Google Play" },
@@ -314,8 +315,8 @@ function SiteFooter() {
 
       <div className="border-t border-white/15">
         <p className="mx-auto max-w-[1200px] px-4 py-5 text-xs leading-relaxed text-ink-300 sm:px-6">
-          Vé Tàu Tết — giao diện minh hoạ cho bài học kiến trúc hệ thống bán vé. Dữ liệu hiển thị là dữ liệu
-          giả lập, không phải giá vé thật. Tổng đài hỗ trợ 1900 0109.
+          traintix — a demo interface for a lesson on ticketing system architecture. The data shown is
+          simulated, not real fares. Support hotline 1900 0109.
         </p>
       </div>
     </footer>
