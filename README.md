@@ -66,7 +66,8 @@ train-ticket-booking/
 ├── sql/                    # Seed data and migration scripts
 ├── benchmark/              # JMeter (local only, git-ignored)
 ├── run.ps1                 # Start Docker containers, build, and run the backend
-└── test.ps1                # Quick smoke test of the ticket API
+├── test.ps1                # Quick smoke test of the buy-by-quantity API
+└── test-flow.ps1           # End-to-end check of the seat booking flow
 ```
 
 Module dependencies go one way only, inward toward the domain:
@@ -212,6 +213,12 @@ VITE_USE_MOCK=false    # true = in-browser mock server, no backend needed
 
 This script views a ticket, buys 2 tickets, tries to buy more than the stock, sends a request with a missing field, and checks that the stock went down.
 
+```powershell
+.\test-flow.ps1
+```
+
+This one runs the whole seat booking flow and prints PASS/FAIL per check: waiting room, hold without a queue token (`403`), the same hold sent twice with one `Idempotency-Key` (same hold back), the key reused for other seats (`422`), ordering before passengers (`422`), a student discount, paying twice (same order back), and the ticket showing up in `GET /me/tickets` with a masked ID number.
+
 ---
 
 ## Configuration
@@ -297,6 +304,14 @@ POST /api/orders
 { "holdId": "HOLD-1A2B3C4D5E6F", "paymentMethod": "VNPAY" }
 ```
 
+### My tickets
+
+| Method | Path              | Description                                   |
+| ------ | ----------------- | --------------------------------------------- |
+| GET    | `/api/me/tickets` | One entry per passenger of the caller's paid orders |
+
+Each ticket carries the train, stations, departure time, carriage and seat, the passenger name, a masked ID number (`001•••••4567`), the price paid after discount, a status (`VALID`, `USED` once the train has left, `REFUNDED`), and a QR payload without the ID number.
+
 ### Flash-sale tickets (quantity-based)
 
 | Method | Path                      | Description                 |
@@ -325,6 +340,18 @@ The queue uses three Redis keys: `queue:seq` (counter), `queue:waiting` (sorted 
 | `app.queue.admission-window`     | `15m`   | How long an admitted person has to buy        |
 | `app.queue.max-admit-per-tick`   | `50`    | Max people admitted per job run               |
 
+### Idempotency-Key
+
+`POST /holds` and `POST /orders` accept an optional `Idempotency-Key` header (8–100 letters, digits, `-` or `_`). The web app sends one per user action and keeps it across retries.
+
+- The first request with a key claims it in Redis (`SET NX`, key `idem:{scope}:{userId}:{key}`).
+- If it **succeeds**, the response is stored for 1 hour. Any later request with the same key and the same body gets that exact response back, without running the action again.
+- If it **fails**, the key is released, so a retry runs the action for real.
+- A duplicate that arrives while the first request is still running waits up to 3 seconds for its result, then answers `429`.
+- The same key with a **different** body answers `422`.
+
+Without this, a double-clicked "Hold" answered "seat taken" for the user's own seats, and a "Pay" retried after a timeout answered "hold expired" for an order that had been created.
+
 ---
 
 ## Observability
@@ -341,8 +368,7 @@ All Actuator endpoints are exposed:
 ## Known Limitations / Roadmap
 
 - **Waiting room has no heartbeat.** Someone who closes the tab while waiting keeps their place, and when called their slot stays taken until the admission expires (15 minutes). One admission token can also create several holds.
-- **Missing endpoints** the frontend already calls: `GET /me/tickets`, `POST /tickets/{id}/refund`.
-- **`Idempotency-Key`** is sent by the frontend on `POST /holds` and `POST /orders` but is not enforced by the backend yet.
+- **Missing endpoint** the frontend already calls: `POST /tickets/{id}/refund`.
 - **Stock warm-up** is hardcoded to ticket id `1` in `WarmUpStockJob`. It should select the tickets that are about to go on sale.
 - **Schema management** uses Hibernate `ddl-auto: update`. A migration tool such as Flyway should replace it before production.
 - **Authentication** is not implemented. `userId` is passed in the request body.

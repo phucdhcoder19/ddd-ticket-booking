@@ -23,6 +23,9 @@ public interface SeatJPAMapper extends JpaRepository<Seat, Long> {
 
     List<Seat> findByOrderIdOrderByCarriageNumberAscRowNoAscColNoAsc(Long orderId);
 
+    /** Served by the idx_seat_order index. */
+    List<Seat> findByOrderIdIn(Collection<Long> orderIds);
+
     /**
      * Count free seats, grouped by seat class.
      *

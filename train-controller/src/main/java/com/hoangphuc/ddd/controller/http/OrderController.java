@@ -6,6 +6,7 @@ import com.hoangphuc.ddd.application.service.order.OrderAppService;
 import com.hoangphuc.ddd.controller.dto.CreateOrderRequest;
 import com.hoangphuc.ddd.controller.model.vo.ResultMessage;
 import com.hoangphuc.ddd.controller.model.vo.ResultUtil;
+import com.hoangphuc.ddd.controller.support.IdempotentRequests;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,11 +25,16 @@ import org.springframework.web.bind.annotation.*;
 public class OrderController {
 
     private final OrderAppService orderAppService;
+    private final IdempotentRequests idempotentRequests;
 
     @PostMapping
     public ResultMessage<OrderDTO> create(@Valid @RequestBody CreateOrderRequest request,
-                                          @RequestHeader(value = HoldController.QUEUE_TOKEN_HEADER, required = false) String queueToken) {
-        return toResponse(orderAppService.createFromHold(request.getHoldId(), queueToken));
+                                          @RequestHeader(value = HoldController.QUEUE_TOKEN_HEADER, required = false) String queueToken,
+                                          @RequestHeader(value = IdempotentRequests.HEADER, required = false) String idempotencyKey) {
+        // A "Pay" retried after a timeout gets the order that was created, instead
+        // of "hold expired" — the hold was used up by the very order it is asking for.
+        return idempotentRequests.run("orders", idempotencyKey, request, OrderDTO.class,
+                () -> toResponse(orderAppService.createFromHold(request.getHoldId(), queueToken)));
     }
 
     @GetMapping("/{orderNumber}")

@@ -2,6 +2,7 @@ package com.hoangphuc.ddd.domain.repository;
 
 import com.hoangphuc.ddd.domain.model.entity.HoldPassenger;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface HoldPassengerRepository {
@@ -20,4 +21,7 @@ public interface HoldPassengerRepository {
 
     /** Attach the passengers of a hold to the order that was just created. */
     int attachToOrder(Long holdId, Long orderId);
+
+    /** Passengers of several orders in one query, in the order they were entered. */
+    List<HoldPassenger> findByOrders(Collection<Long> orderIds);
 }

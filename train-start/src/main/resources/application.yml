@@ -89,6 +89,13 @@ app:
     admission-window: 15m
     # Estimated time a person spends inside — only used to show "about X minutes left"
     estimated-session-seconds: 180
+  idempotency:
+    # Lifetime of the "still processing" marker; frees the key if the server dies mid-request
+    processing-ttl: 30s
+    # How long a successful response is replayed for the same Idempotency-Key
+    result-ttl: 1h
+    # How long a duplicate (double-click) waits for the first request to finish
+    wait-for-first: 3s
   sale:
     # Sale label — display text, not business data
     label: "Sale 1 — Lunar New Year 2027 tickets"

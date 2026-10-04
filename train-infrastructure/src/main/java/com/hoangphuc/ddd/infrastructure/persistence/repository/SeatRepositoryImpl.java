@@ -56,6 +56,14 @@ public class SeatRepositoryImpl implements SeatRepository {
     }
 
     @Override
+    public List<Seat> findByOrders(Collection<Long> orderIds) {
+        if (orderIds.isEmpty()) {
+            return List.of();   // "IN ()" is invalid SQL
+        }
+        return seatJPAMapper.findByOrderIdIn(orderIds);
+    }
+
+    @Override
     public int claimForHold(Long tripId, Collection<String> seatCodes, Long holdId) {
         return seatJPAMapper.claimForHold(tripId, seatCodes, holdId);
     }

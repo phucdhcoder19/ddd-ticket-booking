@@ -28,6 +28,9 @@ public interface SeatRepository {
     /** Seats bought by an order. */
     List<Seat> findByOrder(Long orderId);
 
+    /** Seats bought by several orders, in one query. */
+    List<Seat> findByOrders(Collection<Long> orderIds);
+
     /**
      * CLAIM SEATS for a hold.
      *

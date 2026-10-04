@@ -10,6 +10,8 @@ import com.hoangphuc.ddd.controller.dto.SavePassengersRequest;
 import com.hoangphuc.ddd.domain.model.enums.PassengerDiscount;
 import com.hoangphuc.ddd.controller.model.vo.ResultMessage;
 import com.hoangphuc.ddd.controller.model.vo.ResultUtil;
+import com.hoangphuc.ddd.controller.support.CurrentUser;
+import com.hoangphuc.ddd.controller.support.IdempotentRequests;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,19 +35,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HoldController {
 
-    /**
-     * No login yet. Every hold is recorded against one demo user.
-     *
-     * A constant here, userId is NOT read from the body: accepting any userId
-     * from the client means anyone can book on behalf of anyone else and,
-     * worse, see other people's tickets once "my tickets" exists. When login
-     * is plugged in, this is exactly the one line to change.
-     */
-    private static final Long DEMO_USER_ID = 1L;
-
     public static final String QUEUE_TOKEN_HEADER = "X-Queue-Token";
 
     private final HoldAppService holdAppService;
+    private final IdempotentRequests idempotentRequests;
 
     /**
      * The admission token travels in a HEADER, not in the body: it is not data
@@ -55,17 +48,21 @@ public class HoldController {
      */
     @PostMapping
     public ResultMessage<HoldDTO> create(@Valid @RequestBody CreateHoldRequest request,
-                                         @RequestHeader(value = QUEUE_TOKEN_HEADER, required = false) String queueToken) {
+                                         @RequestHeader(value = QUEUE_TOKEN_HEADER, required = false) String queueToken,
+                                         @RequestHeader(value = IdempotentRequests.HEADER, required = false) String idempotencyKey) {
         HoldCommand command = new HoldCommand(
                 request.getTripId(),
                 request.getSeatClass(),
                 distinct(request.getSeatIds()),
                 request.getFrom(),
                 request.getTo(),
-                DEMO_USER_ID,
+                CurrentUser.id(),   // never from the body, see CurrentUser
                 queueToken);
 
-        return toResponse(holdAppService.createHold(command));
+        // A repeated "Hold" with the same key gets the first hold back, instead of
+        // "seat taken" for the seats the first request already claimed for this user.
+        return idempotentRequests.run("holds", idempotencyKey, request, HoldDTO.class,
+                () -> toResponse(holdAppService.createHold(command)));
     }
 
     @GetMapping("/{holdCode}")

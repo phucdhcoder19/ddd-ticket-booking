@@ -4,7 +4,10 @@ import com.hoangphuc.ddd.domain.model.entity.TicketOrder;
 import com.hoangphuc.ddd.domain.repository.TicketOrderRepository;
 import com.hoangphuc.ddd.infrastructure.persistence.mapper.TicketOrderJPAMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
+
+import java.util.List;
 
 @Repository
 @RequiredArgsConstructor
@@ -22,5 +25,10 @@ public class TicketOrderRepositoryImpl implements TicketOrderRepository {
     @Override
     public TicketOrder findByOrderNumber(String orderNumber) {
         return ticketOrderJPAMapper.findByOrderNumber(orderNumber).orElse(null);
+    }
+
+    @Override
+    public List<TicketOrder> findSeatOrdersByUser(Long userId, int limit) {
+        return ticketOrderJPAMapper.findByUserIdAndTripIdIsNotNullOrderByCreatedAtDesc(userId, PageRequest.of(0, limit));
     }
 }

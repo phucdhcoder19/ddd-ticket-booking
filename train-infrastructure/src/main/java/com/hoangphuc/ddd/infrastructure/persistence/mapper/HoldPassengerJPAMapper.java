@@ -6,11 +6,15 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface HoldPassengerJPAMapper extends JpaRepository<HoldPassenger, Long> {
 
     List<HoldPassenger> findByHoldIdOrderById(Long holdId);
+
+    /** Served by the idx_hold_passenger_order index. */
+    List<HoldPassenger> findByOrderIdInOrderById(Collection<Long> orderIds);
 
     /**
      * Delete with one DELETE statement, not deleteAll(findBy...).

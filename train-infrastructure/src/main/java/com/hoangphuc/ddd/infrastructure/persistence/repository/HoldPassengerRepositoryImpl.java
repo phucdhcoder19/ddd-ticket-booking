@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -31,5 +32,13 @@ public class HoldPassengerRepositoryImpl implements HoldPassengerRepository {
     @Transactional
     public int attachToOrder(Long holdId, Long orderId) {
         return holdPassengerJPAMapper.attachToOrder(holdId, orderId);
+    }
+
+    @Override
+    public List<HoldPassenger> findByOrders(Collection<Long> orderIds) {
+        if (orderIds.isEmpty()) {
+            return List.of();   // "IN ()" is invalid SQL
+        }
+        return holdPassengerJPAMapper.findByOrderIdInOrderById(orderIds);
     }
 }
