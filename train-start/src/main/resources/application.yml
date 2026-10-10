@@ -96,6 +96,11 @@ app:
     result-ttl: 1h
     # How long a duplicate (double-click) waits for the first request to finish
     wait-for-first: 3s
+  refund:
+    # Share of the ticket price kept as a fee (the frontend confirmation shows 20%)
+    fee-rate: 0.2
+    # Refunds close this long before departure: a seat freed later cannot be resold
+    cutoff: 24h
   sale:
     # Sale label — display text, not business data
     label: "Sale 1 — Lunar New Year 2027 tickets"

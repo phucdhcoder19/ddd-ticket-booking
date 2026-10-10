@@ -84,6 +84,7 @@ export const api = {
   getMyTickets: (o?: CallOptions) =>
     USE_MOCK ? mockApi.getMyTickets() : request<Ticket[]>("/me/tickets", o),
 
+  /** Refund one ticket — with an Idempotency-Key so a retry after a timeout gets "refunded", not "already refunded" */
   refundTicket: (ticketId: string, o?: CallOptions) =>
     USE_MOCK
       ? mockApi.refundTicket(ticketId)

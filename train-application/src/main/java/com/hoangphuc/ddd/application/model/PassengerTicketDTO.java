@@ -41,5 +41,8 @@ public class PassengerTicketDTO {
     /** VALID | USED | REFUNDED */
     private String status;
 
+    /** Money going back to the customer. NULL unless the ticket was refunded. */
+    private Long refundAmount;
+
     private String qrPayload;
 }

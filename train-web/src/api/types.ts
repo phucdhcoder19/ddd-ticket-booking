@@ -136,6 +136,8 @@ export type Ticket = {
   passengerId: string;
   price: number;
   status: TicketStatus;
+  /** Money going back to the customer, set once the ticket is refunded */
+  refundAmount?: number | null;
   qrPayload: string;
 };
 

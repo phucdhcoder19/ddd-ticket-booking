@@ -45,4 +45,7 @@ public interface SeatRepository {
 
     /** Move seats from "held" to "sold" and attach them to the order. */
     int sellByHold(Long holdId, Long orderId);
+
+    /** Put ONE sold seat of an order back on sale (refund). */
+    int releaseSold(Long orderId, String seatCode);
 }

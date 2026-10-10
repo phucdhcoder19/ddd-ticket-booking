@@ -28,6 +28,11 @@ public class TicketOrderRepositoryImpl implements TicketOrderRepository {
     }
 
     @Override
+    public TicketOrder findById(Long id) {
+        return ticketOrderJPAMapper.findById(id).orElse(null);
+    }
+
+    @Override
     public List<TicketOrder> findSeatOrdersByUser(Long userId, int limit) {
         return ticketOrderJPAMapper.findByUserIdAndTripIdIsNotNullOrderByCreatedAtDesc(userId, PageRequest.of(0, limit));
     }

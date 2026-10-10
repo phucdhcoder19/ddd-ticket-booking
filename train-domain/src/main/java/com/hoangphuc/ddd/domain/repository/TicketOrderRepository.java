@@ -10,6 +10,8 @@ public interface TicketOrderRepository {
 
     TicketOrder findByOrderNumber(String orderNumber);
 
+    TicketOrder findById(Long id);
+
     /**
      * A user's seat-booking orders, newest first, at most `limit`.
      * Buy-by-quantity orders (no tripId) are left out: they have no seats or passengers to show.

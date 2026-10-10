@@ -31,14 +31,16 @@ export function MyTicketsPage() {
 
   const tickets = useAsync((o) => api.getMyTickets(o), []);
 
-  const { submit: doRefund, pending: refunding } = useSubmitLock(async () => {
+  const { submit: doRefund, pending: refunding } = useSubmitLock(async ({ idempotencyKey }) => {
     if (!confirming) return;
     try {
-      await api.refundTicket(confirming.id);
+      const refunded = await api.refundTicket(confirming.id, { idempotencyKey });
+      // The server computes the amount; fall back to the estimate shown in the dialog
+      const amount = refunded.refundAmount ?? Math.round(confirming.price * 0.8);
       toast.show({
         tone: "success",
         title: "Refund request received",
-        detail: `The money will be back in your account within 3–5 business days.`,
+        detail: `${formatVnd(amount)} will be back in your account within 3–5 business days.`,
       });
       setConfirming(null);
       void tickets.refreshSilently();

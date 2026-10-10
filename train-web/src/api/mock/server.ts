@@ -352,6 +352,7 @@ export const mockApi = {
     if (!t) throw new ApiError("NOT_FOUND", "Ticket not found");
     if (t.status !== "VALID") throw new ApiError("VALIDATION", "This ticket cannot be refunded");
     t.status = "REFUNDED";
+    t.refundAmount = Math.round(t.price * 0.8);
     return t;
   },
 

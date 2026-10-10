@@ -84,4 +84,15 @@ public interface SeatJPAMapper extends JpaRepository<Seat, Long> {
     @Query("UPDATE Seat s SET s.status = 2, s.orderId = :orderId " +
            "WHERE s.holdId = :holdId AND s.status = 1")
     int sellByHold(@Param("holdId") Long holdId, @Param("orderId") Long orderId);
+
+    /**
+     * Refund: the seat goes back to stock. holdId and orderId are cleared so
+     * the next buyer starts from a clean row, exactly like a never-sold seat.
+     * (orderId, seatCode) is unique: an order belongs to one trip, and a seat
+     * code is unique within a trip.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Seat s SET s.status = 0, s.holdId = null, s.orderId = null " +
+           "WHERE s.orderId = :orderId AND s.seatCode = :seatCode AND s.status = 2")
+    int releaseSold(@Param("orderId") Long orderId, @Param("seatCode") String seatCode);
 }

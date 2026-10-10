@@ -58,6 +58,31 @@ public class MyTicketsAppServiceImpl implements MyTicketsAppService {
     @Override
     public List<PassengerTicketDTO> listTickets(Long userId) {
         List<TicketOrder> orders = ticketOrderRepository.findSeatOrdersByUser(userId, MAX_ORDERS);
+        List<PassengerTicketDTO> result = toTickets(orders);
+        log.info("[MY-TICKETS] user={} orders={} tickets={}", userId, orders.size(), result.size());
+        return result;
+    }
+
+    /**
+     * Built the same way as the list, so a ticket looks identical wherever it
+     * comes from. Someone else's ticket answers "not found", not "forbidden":
+     * no hint that the id exists.
+     */
+    @Override
+    public Optional<PassengerTicketDTO> findTicket(Long userId, Long ticketId) {
+        Optional<HoldPassenger> passenger = holdPassengerRepository.findById(ticketId);
+        if (passenger.isEmpty() || passenger.get().getOrderId() == null) {
+            return Optional.empty();
+        }
+        TicketOrder order = ticketOrderRepository.findById(passenger.get().getOrderId());
+        if (order == null || !userId.equals(order.getUserId())) {
+            return Optional.empty();
+        }
+        String id = String.valueOf(ticketId);
+        return toTickets(List.of(order)).stream().filter(t -> id.equals(t.getId())).findFirst();
+    }
+
+    private List<PassengerTicketDTO> toTickets(List<TicketOrder> orders) {
         if (orders.isEmpty()) {
             return List.of();
         }
@@ -74,6 +99,7 @@ public class MyTicketsAppServiceImpl implements MyTicketsAppService {
         for (Seat s : seatRepository.findByOrders(orderIds)) {
             seatByKey.put(s.getOrderId() + "|" + s.getSeatCode(), s);
         }
+        addRefundedSeats(orders, passengersByOrder, seatByKey);
 
         Map<String, String> stationNames = new HashMap<>();
         for (Station s : stationDomainService.listStations()) {
@@ -115,14 +141,40 @@ public class MyTicketsAppServiceImpl implements MyTicketsAppService {
                 dto.setPassengerName(p.getFullName());
                 dto.setPassengerId(mask(p.getIdNumber()));
                 dto.setPrice(p.getFinalPrice());
-                // A paid ticket whose train has already left counts as used
-                dto.setStatus("VALID".equals(status) && departAt != null && departAt.isBefore(now) ? "USED" : status);
+                dto.setRefundAmount(p.getRefundAmount());
+                if (p.isRefunded()) {
+                    dto.setStatus("REFUNDED");
+                } else {
+                    // A paid ticket whose train has already left counts as used
+                    dto.setStatus("VALID".equals(status) && departAt != null && departAt.isBefore(now) ? "USED" : status);
+                }
                 dto.setQrPayload(qrPayload(dto));
                 result.add(dto);
             }
         }
-        log.info("[MY-TICKETS] user={} orders={} tickets={}", userId, orders.size(), result.size());
         return result;
+    }
+
+    /**
+     * A refunded seat no longer points at its order (it went back on sale),
+     * so findByOrders() misses it. Carriage, label and class never change, so
+     * look the seat up by (trip, seat code) instead — one query per trip.
+     */
+    private void addRefundedSeats(List<TicketOrder> orders,
+                                  Map<Long, List<HoldPassenger>> passengersByOrder,
+                                  Map<String, Seat> seatByKey) {
+        for (TicketOrder order : orders) {
+            List<String> missing = passengersByOrder.getOrDefault(order.getId(), List.of()).stream()
+                    .filter(p -> p.isRefunded() && !seatByKey.containsKey(order.getId() + "|" + p.getSeatCode()))
+                    .map(HoldPassenger::getSeatCode)
+                    .toList();
+            if (missing.isEmpty() || order.getTripId() == null) {
+                continue;
+            }
+            for (Seat s : seatRepository.findByTripAndCodes(order.getTripId(), missing)) {
+                seatByKey.put(order.getId() + "|" + s.getSeatCode(), s);
+            }
+        }
     }
 
     /** null = the order has not issued tickets (still pending payment). */

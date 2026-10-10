@@ -2,8 +2,10 @@ package com.hoangphuc.ddd.domain.repository;
 
 import com.hoangphuc.ddd.domain.model.entity.HoldPassenger;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface HoldPassengerRepository {
 
@@ -24,4 +26,13 @@ public interface HoldPassengerRepository {
 
     /** Passengers of several orders in one query, in the order they were entered. */
     List<HoldPassenger> findByOrders(Collection<Long> orderIds);
+
+    Optional<HoldPassenger> findById(Long id);
+
+    /**
+     * Mark one ticket as refunded — only if it was sold and not refunded yet.
+     *
+     * @return 1 = this call refunded it, 0 = someone else got there first
+     */
+    int markRefunded(Long id, long fee, long amount, LocalDateTime at);
 }

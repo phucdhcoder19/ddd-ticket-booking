@@ -7,8 +7,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -40,5 +42,16 @@ public class HoldPassengerRepositoryImpl implements HoldPassengerRepository {
             return List.of();   // "IN ()" is invalid SQL
         }
         return holdPassengerJPAMapper.findByOrderIdInOrderById(orderIds);
+    }
+
+    @Override
+    public Optional<HoldPassenger> findById(Long id) {
+        return holdPassengerJPAMapper.findById(id);
+    }
+
+    @Override
+    public int markRefunded(Long id, long fee, long amount, LocalDateTime at) {
+        // No @Transactional: joins the transaction of RefundTransactionService
+        return holdPassengerJPAMapper.markRefunded(id, fee, amount, at);
     }
 }

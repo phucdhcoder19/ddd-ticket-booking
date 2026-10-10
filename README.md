@@ -310,7 +310,19 @@ POST /api/orders
 | ------ | ----------------- | --------------------------------------------- |
 | GET    | `/api/me/tickets` | One entry per passenger of the caller's paid orders |
 
-Each ticket carries the train, stations, departure time, carriage and seat, the passenger name, a masked ID number (`001•••••4567`), the price paid after discount, a status (`VALID`, `USED` once the train has left, `REFUNDED`), and a QR payload without the ID number.
+Each ticket carries the train, stations, departure time, carriage and seat, the passenger name, a masked ID number (`001•••••4567`), the price paid after discount, a status (`VALID`, `USED` once the train has left, `REFUNDED`), `refundAmount` once refunded, and a QR payload without the ID number.
+
+### Refunds
+
+| Method | Path                            | Description                                          |
+| ------ | ------------------------------- | ---------------------------------------------------- |
+| POST   | `/api/tickets/{ticketId}/refund` | Refund one ticket (the `id` from `GET /me/tickets`) |
+
+- Refunds are per passenger: one person in a group can refund while the others travel.
+- The fee (`app.refund.fee-rate`, default 20%) and the amount are computed on the server. The amount is recorded on the ticket; no money moves yet because there is no payment gateway.
+- Refunds close `app.refund.cutoff` (default `24h`) before departure: `422`. Refunding twice: `422`. Someone else's ticket: `404`.
+- One transaction marks the ticket refunded and puts its seat back on sale. A conditional `UPDATE ... WHERE refundedAt IS NULL` makes sure two concurrent requests refund once.
+- Accepts an `Idempotency-Key`, like `POST /holds` and `POST /orders`.
 
 ### Flash-sale tickets (quantity-based)
 
@@ -342,7 +354,7 @@ The queue uses three Redis keys: `queue:seq` (counter), `queue:waiting` (sorted 
 
 ### Idempotency-Key
 
-`POST /holds` and `POST /orders` accept an optional `Idempotency-Key` header (8–100 letters, digits, `-` or `_`). The web app sends one per user action and keeps it across retries.
+`POST /holds`, `POST /orders` and `POST /tickets/{id}/refund` accept an optional `Idempotency-Key` header (8–100 letters, digits, `-` or `_`). The web app sends one per user action and keeps it across retries.
 
 - The first request with a key claims it in Redis (`SET NX`, key `idem:{scope}:{userId}:{key}`).
 - If it **succeeds**, the response is stored for 1 hour. Any later request with the same key and the same body gets that exact response back, without running the action again.
@@ -368,7 +380,6 @@ All Actuator endpoints are exposed:
 ## Known Limitations / Roadmap
 
 - **Waiting room has no heartbeat.** Someone who closes the tab while waiting keeps their place, and when called their slot stays taken until the admission expires (15 minutes). One admission token can also create several holds.
-- **Missing endpoint** the frontend already calls: `POST /tickets/{id}/refund`.
 - **Stock warm-up** is hardcoded to ticket id `1` in `WarmUpStockJob`. It should select the tickets that are about to go on sale.
 - **Schema management** uses Hibernate `ddl-auto: update`. A migration tool such as Flyway should replace it before production.
 - **Authentication** is not implemented. `userId` is passed in the request body.

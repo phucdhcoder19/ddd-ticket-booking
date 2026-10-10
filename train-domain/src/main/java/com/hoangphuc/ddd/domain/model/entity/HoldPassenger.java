@@ -68,5 +68,24 @@ public class HoldPassenger {
     /** The order that bought this ticket. NULL until the hold becomes an order. */
     private Long orderId;
 
+    /**
+     * Refund of THIS passenger's ticket. NULL = not refunded.
+     *
+     * Kept per passenger, not on the order: a family of four may refund one
+     * ticket and travel on the other three. Wrapper types so that adding the
+     * columns to a table with existing rows leaves them NULL, not 0.
+     */
+    private LocalDateTime refundedAt;
+
+    /** Fee kept by the railway. */
+    private Long refundFee;
+
+    /** What goes back to the customer: finalPrice - refundFee. */
+    private Long refundAmount;
+
+    public boolean isRefunded() {
+        return refundedAt != null;
+    }
+
     private LocalDateTime createdAt;
 }

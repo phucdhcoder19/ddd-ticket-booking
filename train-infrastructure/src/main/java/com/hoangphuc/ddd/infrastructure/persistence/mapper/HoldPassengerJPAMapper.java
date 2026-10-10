@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -32,4 +33,15 @@ public interface HoldPassengerJPAMapper extends JpaRepository<HoldPassenger, Lon
     @Query("UPDATE HoldPassenger p SET p.orderId = :orderId " +
            "WHERE p.holdId = :holdId AND p.orderId IS NULL")
     int attachToOrder(@Param("holdId") Long holdId, @Param("orderId") Long orderId);
+
+    /**
+     * "refundedAt IS NULL" is the referee: two refund requests for the same
+     * ticket (double click, two devices) both run this, MySQL runs them one
+     * after the other, and only the first changes a row.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE HoldPassenger p SET p.refundedAt = :at, p.refundFee = :fee, p.refundAmount = :amount " +
+           "WHERE p.id = :id AND p.orderId IS NOT NULL AND p.refundedAt IS NULL")
+    int markRefunded(@Param("id") Long id, @Param("fee") long fee,
+                     @Param("amount") long amount, @Param("at") LocalDateTime at);
 }

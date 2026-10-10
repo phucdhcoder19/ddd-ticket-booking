@@ -77,4 +77,9 @@ public class SeatRepositoryImpl implements SeatRepository {
     public int sellByHold(Long holdId, Long orderId) {
         return seatJPAMapper.sellByHold(holdId, orderId);
     }
+
+    @Override
+    public int releaseSold(Long orderId, String seatCode) {
+        return seatJPAMapper.releaseSold(orderId, seatCode);
+    }
 }
