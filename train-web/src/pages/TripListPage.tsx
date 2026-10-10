@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import type { SeatClassCode, Trip } from "@/api/types";
+import { ActiveHoldBanner, CancelHoldDialog } from "@/components/HoldBar";
 import { TrainCard, TrainCardSkeleton } from "@/components/TrainCard";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -9,6 +10,7 @@ import { Stepper } from "@/components/ui/Stepper";
 import { EmptyState, ErrorState, LoadingRegion, RetryBanner } from "@/components/ui/StateView";
 import { useAsync } from "@/hooks/useAsync";
 import { useBooking } from "@/store/BookingContext";
+import { useToast } from "@/store/ToastContext";
 import { formatDate, fromDateKey, weekdayLabel } from "@/lib/format";
 import { getDayInfo, peakText } from "@/lib/lunar";
 import { cn } from "@/lib/cn";
@@ -25,7 +27,9 @@ type SortKey = "depart" | "price" | "duration";
  */
 export function TripListPage() {
   const navigate = useNavigate();
-  const { query, startSelection } = useBooking();
+  const { query, hold, startSelection, clearHold } = useBooking();
+  const toast = useToast();
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [sort, setSort] = useState<SortKey>("depart");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -62,6 +66,12 @@ export function TripListPage() {
     });
 
   const onSelectClass = (trip: Trip, seatClass: SeatClassCode) => {
+    // Picking another trip or class replaces the current hold. Release it on
+    // the server too, otherwise it keeps blocking those seats until it expires.
+    if (hold) {
+      void api.releaseHold(hold.holdId).catch(() => {});
+      toast.show({ tone: "info", title: "Your previous hold was cancelled", detail: "Its seats are back on sale." });
+    }
     startSelection(trip, seatClass);
     navigate(`/seats/${encodeURIComponent(trip.id)}`);
   };
@@ -91,6 +101,27 @@ export function TripListPage() {
         </div>
         <span className="shrink-0 text-sm font-semibold text-brand-700">Edit</span>
       </button>
+
+      {hold && (
+        <>
+          <ActiveHoldBanner
+            hold={hold}
+            onContinue={() => navigate("/passengers")}
+            onCancel={() => setCancelOpen(true)}
+            onExpire={clearHold}
+          />
+          <CancelHoldDialog
+            open={cancelOpen}
+            hold={hold}
+            onClose={() => setCancelOpen(false)}
+            onCancelled={() => {
+              setCancelOpen(false);
+              clearHold();
+              void trips.refreshSilently();
+            }}
+          />
+        </>
+      )}
 
       {trips.retrying && <RetryBanner attempt={trips.retrying.attempt} maxAttempts={trips.retrying.maxAttempts} />}
 

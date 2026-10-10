@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import type { Passenger } from "@/api/types";
-import { HoldBar, HoldExpiredDialog } from "@/components/HoldBar";
+import { CancelHoldDialog, HoldBar, HoldExpiredDialog } from "@/components/HoldBar";
 import { PassengerForm, finalPriceOf } from "@/components/PassengerForm";
 import { StickyActionBar } from "@/components/TrainCard";
 import { Button } from "@/components/ui/Button";
@@ -30,10 +30,14 @@ export function PassengerInfoPage() {
 
   const [showErrors, setShowErrors] = useState(false);
   const [expired, setExpired] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  // Set when the user cancels: clearing the hold must not trigger the
+  // "no hold -> /trips" redirect below, the user is going back to the seat map
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
-    if (!hold || !trip) navigate("/trips", { replace: true });
+    if ((!hold || !trip) && !cancelledRef.current) navigate("/trips", { replace: true });
   }, [hold, trip, navigate]);
 
   const total = useMemo(
@@ -86,6 +90,14 @@ export function PassengerInfoPage() {
     }
   });
 
+  /** Back to the seat map of the same trip, now with nothing held */
+  const handleCancelled = () => {
+    if (!trip) return;
+    cancelledRef.current = true;
+    navigate(`/seats/${encodeURIComponent(trip.id)}`, { replace: true });
+    clearHold();
+  };
+
   const updatePassenger = (index: number, p: Passenger) => {
     const next = [...passengers];
     next[index] = p;
@@ -106,7 +118,7 @@ export function PassengerInfoPage() {
     <div className="flex flex-col gap-4">
       <Stepper current={2} />
 
-      <HoldBar hold={hold} total={total} onExpire={handleExpire} />
+      <HoldBar hold={hold} total={total} onExpire={handleExpire} onCancel={() => setCancelOpen(true)} />
 
       <div className="rounded-2xl border border-ink-200 bg-white px-4 py-3">
         <div className="flex items-center gap-2">
@@ -173,6 +185,12 @@ export function PassengerInfoPage() {
       </StickyActionBar>
 
       <HoldExpiredDialog open={expired} tripId={trip.id} />
+      <CancelHoldDialog
+        open={cancelOpen}
+        hold={hold}
+        onClose={() => setCancelOpen(false)}
+        onCancelled={handleCancelled}
+      />
     </div>
   );
 }

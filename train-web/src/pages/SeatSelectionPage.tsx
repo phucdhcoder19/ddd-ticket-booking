@@ -4,6 +4,7 @@ import { api } from "@/api/client";
 import { ApiError, friendlyMessage } from "@/api/errors";
 import { clearQueuePass } from "@/lib/queuePass";
 import { SEAT_CLASS_LABEL, type Carriage, type Seat } from "@/api/types";
+import { ActiveHoldBanner, CancelHoldDialog } from "@/components/HoldBar";
 import { SeatMap, SeatMapSkeleton } from "@/components/SeatMap";
 import { StickyActionBar } from "@/components/TrainCard";
 import { Button } from "@/components/ui/Button";
@@ -29,17 +30,21 @@ import { cn } from "@/lib/cn";
  *    highlight the seats the server suggests, and say so in a gentle toast.
  *    Seats that could be held stay selected.
  *  - The "Hold" button is locked against double-clicks and carries an Idempotency-Key.
+ *  - Coming back here (browser back) while a hold is still alive does NOT
+ *    release it: a banner offers to continue or to cancel, and holding new
+ *    seats is blocked until the old hold is gone, so no hold is ever orphaned.
  */
 export function SeatSelectionPage() {
   const navigate = useNavigate();
   const { tripId = "" } = useParams();
-  const { trip, seatClass, query, setHold } = useBooking();
+  const { trip, seatClass, query, hold, setHold, clearHold } = useBooking();
   const toast = useToast();
 
   const [carriageIndex, setCarriageIndex] = useState(0);
   const [selected, setSelected] = useState<Seat[]>([]);
   const [justTaken, setJustTaken] = useState<string[]>([]);
   const [suggested, setSuggested] = useState<string[]>([]);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const maxSeats = query?.passengers ?? 1;
 
@@ -175,6 +180,14 @@ export function SeatSelectionPage() {
     toast.show({ tone: "error", title: "Could not hold your seats", detail: "Please try again." });
   }
 
+  /** The hold is gone (cancelled or expired): its seats are free again, show them */
+  const onHoldGone = () => {
+    setCancelOpen(false);
+    clearHold();
+    resetKey();
+    void carriages.refreshSilently();
+  };
+
   if (!trip || !seatClass) return null;
 
   return (
@@ -193,6 +206,23 @@ export function SeatSelectionPage() {
           Departs {formatTime(trip.departAt)} · {SEAT_CLASS_LABEL[seatClass]} · Pick {maxSeats} {maxSeats === 1 ? "seat" : "seats"}
         </p>
       </div>
+
+      {hold && (
+        <>
+          <ActiveHoldBanner
+            hold={hold}
+            onContinue={() => navigate("/passengers")}
+            onCancel={() => setCancelOpen(true)}
+            onExpire={onHoldGone}
+          />
+          <CancelHoldDialog
+            open={cancelOpen}
+            hold={hold}
+            onClose={() => setCancelOpen(false)}
+            onCancelled={onHoldGone}
+          />
+        </>
+      )}
 
       {carriages.retrying && (
         <RetryBanner attempt={carriages.retrying.attempt} maxAttempts={carriages.retrying.maxAttempts} />
@@ -304,10 +334,12 @@ export function SeatSelectionPage() {
               fullWidth
               loading={holding}
               loadingText="Holding your seats…"
-              disabled={selected.length !== maxSeats}
+              disabled={hold !== null || selected.length !== maxSeats}
               onClick={() => void holdSeats().catch(() => {})}
             >
-              {selected.length === maxSeats
+              {hold
+                ? "Cancel your current hold to pick other seats"
+                : selected.length === maxSeats
                 ? `Hold ${maxSeats} ${maxSeats === 1 ? "seat" : "seats"} for 10 minutes`
                 : `Pick ${maxSeats - selected.length} more ${maxSeats - selected.length === 1 ? "seat" : "seats"}`}
             </Button>
