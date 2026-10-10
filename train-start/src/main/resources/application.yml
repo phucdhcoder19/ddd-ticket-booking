@@ -96,6 +96,16 @@ app:
     result-ttl: 1h
     # How long a duplicate (double-click) waits for the first request to finish
     wait-for-first: 3s
+  auth:
+    # HS256 key, at least 32 bytes. DEV VALUE ONLY: anyone who knows it can forge
+    # a token for any user. In production pass it as an environment variable:
+    # APP_AUTH_JWT_SECRET=<random 64 chars>
+    jwt-secret: ${APP_AUTH_JWT_SECRET:dev-only-secret-change-me-0123456789abcdef}
+    # A JWT cannot be revoked, so keep its life short
+    token-ttl: 24h
+    # Failed sign-ins per phone within the window before it is locked for the window
+    max-failed-logins: 5
+    lockout-window: 15m
   refund:
     # Share of the ticket price kept as a fee (the frontend confirmation shows 20%)
     fee-rate: 0.2

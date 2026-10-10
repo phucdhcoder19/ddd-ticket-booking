@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
+import { AuthProvider } from "@/store/AuthContext";
 import { BookingProvider } from "@/store/BookingContext";
 import { ToastProvider } from "@/store/ToastContext";
 import { HomePage } from "@/pages/HomePage";
@@ -9,6 +10,7 @@ import { SeatSelectionPage } from "@/pages/SeatSelectionPage";
 import { PassengerInfoPage } from "@/pages/PassengerInfoPage";
 import { PaymentPage } from "@/pages/PaymentPage";
 import { MyTicketsPage } from "@/pages/MyTicketsPage";
+import { LoginPage } from "@/pages/LoginPage";
 import { OfflineBanner } from "@/components/OfflineBanner";
 
 /** Readable paths that are easy to share with each other in a message */
@@ -16,6 +18,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
+        <AuthProvider>
         <BookingProvider>
           <OfflineBanner />
           <Routes>
@@ -27,10 +30,12 @@ export default function App() {
               <Route path="passengers" element={<PassengerInfoPage />} />
               <Route path="payment" element={<PaymentPage />} />
               <Route path="my-tickets" element={<MyTicketsPage />} />
+              <Route path="login" element={<LoginPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
         </BookingProvider>
+        </AuthProvider>
       </ToastProvider>
     </BrowserRouter>
   );

@@ -33,6 +33,7 @@ The backend is a Spring Boot application organised in **DDD layers**. The fronte
 - **Flash-sale "buy by quantity" flow**: Redis Lua stock deduction backed by a MySQL transaction, with compensation on failure.
 - **Sale window**: requests are blocked before the sale opens and after it closes, and the UI shows a countdown.
 - **Waiting room**: first come, first served queue on Redis. At most `app.queue.capacity` people are inside at once, and `POST /holds` rejects callers without a valid admission token (`X-Queue-Token`).
+- **Accounts**: sign up and sign in with a phone number and password (BCrypt), JWT bearer tokens. Browsing is open; holding seats, paying, tickets and refunds need an account, and each user only ever sees their own holds, orders and tickets.
 - **Metrics**: Prometheus metrics with p50/p95/p99 latency histograms and SLO buckets.
 
 ---
@@ -217,7 +218,7 @@ This script views a ticket, buys 2 tickets, tries to buy more than the stock, se
 .\test-flow.ps1
 ```
 
-This one runs the whole seat booking flow and prints PASS/FAIL per check: waiting room, hold without a queue token (`403`), the same hold sent twice with one `Idempotency-Key` (same hold back), the key reused for other seats (`422`), ordering before passengers (`422`), a student discount, paying twice (same order back), and the ticket showing up in `GET /me/tickets` with a masked ID number.
+This one runs the whole seat booking flow and prints PASS/FAIL per check: two fresh accounts, a wrong password (`422`), hold without signing in (`401`), hold without a queue token (`403`), another account looking at the hold (`404`), the same hold sent twice with one `Idempotency-Key` (same hold back), the key reused for other seats (`422`), ordering before passengers (`422`), a student discount, paying twice (same order back), the ticket showing up in `GET /me/tickets` with a masked ID number (and not for the other account), and a refund (refused for the other account, refused the second time). Point it at another instance with `.\test-flow.ps1 -base http://localhost:9998/api`.
 
 ---
 
@@ -236,6 +237,9 @@ Main settings in `train-start/src/main/resources/application.yml`:
 | `app.pricing.peak-from` / `peak-to`| `2027-01-25` / `2027-02-05` | Lunar New Year peak period                               |
 | `app.pricing.peak-surcharge`       | `1.35`                 | Fare multiplier during the peak period                        |
 | `app.web.allowed-origin-pattern`   | `http://localhost:[*]` | CORS origin. Replace with a real domain in production.        |
+| `app.auth.jwt-secret`              | dev value              | HS256 key, at least 32 bytes. Set `APP_AUTH_JWT_SECRET` outside development: anyone who knows it can forge a token for any user |
+| `app.auth.token-ttl`               | `24h`                  | Token lifetime. A JWT cannot be revoked, so keep it short     |
+| `app.auth.max-failed-logins` / `lockout-window` | `5` / `15m` | Wrong passwords allowed per phone before it is locked for the window |
 | `app.demo.fail-after-deduct`       | `false`                | Set `true` to force a failure after the stock deduction, to check that the transaction rolls back |
 
 ---
@@ -243,6 +247,23 @@ Main settings in `train-start/src/main/resources/application.yml`:
 ## API Reference
 
 All business endpoints are under the `/api` prefix. Actuator stays at `/actuator`.
+
+### Accounts
+
+| Method | Path                 | Description                                              |
+| ------ | -------------------- | -------------------------------------------------------- |
+| POST   | `/api/auth/register` | `{ phone, fullName, password }` → `{ token, expiresAt, user }`, signed in right away |
+| POST   | `/api/auth/login`    | `{ phone, password }` → `{ token, expiresAt, user }`     |
+| GET    | `/api/me`            | The signed-in user                                       |
+
+Send the token as `Authorization: Bearer <token>`. `/api/holds/**`, `/api/orders/**`, `/api/me/**` and `/api/tickets/**` answer `401` without a valid one; everything else stays open.
+
+- Phones are normalised (`+84 912 345 678` → `0912345678`), so one number means one account.
+- Wrong password and unknown phone get the same answer (`422`) and take the same time, so the API does not reveal which numbers have accounts.
+- After 5 wrong passwords for one phone within 15 minutes, sign-in answers `429` until the window ends. The counter lives in Redis (`login:fail:{phone}`), shared by every instance.
+- A hold, order or ticket of another user answers `404`, exactly like one that does not exist.
+- The JWT is built and checked in `JwtTokenService` without a library: fixed header (no `alg: none`), constant-time signature check, expiry.
+- No logout endpoint: a JWT cannot be revoked, signing out means the client forgets it. The web app stores it in `localStorage`.
 
 ### Catalog
 
@@ -382,4 +403,4 @@ All Actuator endpoints are exposed:
 - **Waiting room has no heartbeat.** Someone who closes the tab while waiting keeps their place, and when called their slot stays taken until the admission expires (15 minutes). One admission token can also create several holds.
 - **Stock warm-up** is hardcoded to ticket id `1` in `WarmUpStockJob`. It should select the tickets that are about to go on sale.
 - **Schema management** uses Hibernate `ddl-auto: update`. A migration tool such as Flyway should replace it before production.
-- **Authentication** is not implemented. `userId` is passed in the request body.
+- **Accounts are minimal**: no phone verification (OTP), no password reset, no refresh token (sign in again after 24h). The flash-sale endpoint `POST /ticket/buy` still takes `userId` from the body, so load tests can call it without accounts.

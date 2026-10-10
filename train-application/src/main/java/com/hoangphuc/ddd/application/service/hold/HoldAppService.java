@@ -11,14 +11,19 @@ public interface HoldAppService {
     /** Hold the seats the customer just picked, with a deadline. */
     HoldResult createHold(HoldCommand command);
 
+    /*
+     * The methods below only act on a hold that belongs to userId. Someone
+     * else's hold answers HOLD_NOT_FOUND, exactly like a code that never existed.
+     */
+
     /** Client polling to keep the countdown in sync with the server clock. */
-    HoldResult getHold(String holdCode);
+    HoldResult getHold(String holdCode, Long userId);
 
     /** Record who sits in each seat. Can be called repeatedly; each call replaces the previous one. */
-    HoldResult savePassengers(String holdCode, List<PassengerCommand> passengers);
+    HoldResult savePassengers(String holdCode, Long userId, List<PassengerCommand> passengers);
 
     /** The user pressed back: return the seats now, do not wait for expiry. */
-    HoldResult releaseHold(String holdCode);
+    HoldResult releaseHold(String holdCode, Long userId);
 
     /** Called by the background job. Returns how many holds were released in this scan. */
     int releaseExpiredHolds();

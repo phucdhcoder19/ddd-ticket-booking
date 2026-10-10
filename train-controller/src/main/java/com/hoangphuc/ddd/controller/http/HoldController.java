@@ -12,6 +12,7 @@ import com.hoangphuc.ddd.controller.model.vo.ResultMessage;
 import com.hoangphuc.ddd.controller.model.vo.ResultUtil;
 import com.hoangphuc.ddd.controller.support.CurrentUser;
 import com.hoangphuc.ddd.controller.support.IdempotentRequests;
+import com.hoangphuc.ddd.controller.support.Phones;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,7 +68,7 @@ public class HoldController {
 
     @GetMapping("/{holdCode}")
     public ResultMessage<HoldDTO> get(@PathVariable("holdCode") String holdCode) {
-        return toResponse(holdAppService.getHold(holdCode));
+        return toResponse(holdAppService.getHold(holdCode, CurrentUser.id()));
     }
 
     /**
@@ -81,12 +82,12 @@ public class HoldController {
         List<PassengerCommand> passengers = request.getPassengers().stream()
                 .map(this::toCommand)
                 .toList();
-        return toResponse(holdAppService.savePassengers(holdCode, passengers));
+        return toResponse(holdAppService.savePassengers(holdCode, CurrentUser.id(), passengers));
     }
 
     @DeleteMapping("/{holdCode}")
     public ResultMessage<HoldDTO> release(@PathVariable("holdCode") String holdCode) {
-        return toResponse(holdAppService.releaseHold(holdCode));
+        return toResponse(holdAppService.releaseHold(holdCode, CurrentUser.id()));
     }
 
     /**
@@ -101,16 +102,8 @@ public class HoldController {
         return seatIds == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(seatIds));
     }
 
-    /**
-     * Normalise at the boundary so the DB holds ONE form of each value: if the
-     * table mixes "0912 345 678" and "+84912345678", a lookup with
-     * WHERE phone = ? never finds them all.
-     */
     private PassengerCommand toCommand(SavePassengersRequest.PassengerRequest p) {
-        String phone = p.getPhone().replaceAll("[\\s.]", "");
-        if (phone.startsWith("+84")) {
-            phone = "0" + phone.substring(3);
-        }
+        String phone = Phones.normalize(p.getPhone());
         PassengerDiscount discount = p.getDiscount() == null
                 ? PassengerDiscount.NONE
                 : PassengerDiscount.valueOf(p.getDiscount());

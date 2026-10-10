@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { ApiError, friendlyMessage } from "@/api/errors";
 import { clearQueuePass } from "@/lib/queuePass";
@@ -13,6 +13,7 @@ import { Stepper } from "@/components/ui/Stepper";
 import { EmptyState, ErrorState, LoadingRegion, RetryBanner } from "@/components/ui/StateView";
 import { useAsync } from "@/hooks/useAsync";
 import { useSubmitLock } from "@/hooks/useSubmitLock";
+import { useAuth } from "@/store/AuthContext";
 import { useBooking } from "@/store/BookingContext";
 import { useToast } from "@/store/ToastContext";
 import { formatTime, formatVnd } from "@/lib/format";
@@ -30,13 +31,17 @@ import { cn } from "@/lib/cn";
  *    highlight the seats the server suggests, and say so in a gentle toast.
  *    Seats that could be held stay selected.
  *  - The "Hold" button is locked against double-clicks and carries an Idempotency-Key.
+ *  - Holding needs an account: browsing the map does not, so signing in is
+ *    asked for at the moment it matters, and the user comes straight back here.
  *  - Coming back here (browser back) while a hold is still alive does NOT
  *    release it: a banner offers to continue or to cancel, and holding new
  *    seats is blocked until the old hold is gone, so no hold is ever orphaned.
  */
 export function SeatSelectionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { tripId = "" } = useParams();
+  const { user } = useAuth();
   const { trip, seatClass, query, hold, setHold, clearHold } = useBooking();
   const toast = useToast();
 
@@ -104,8 +109,18 @@ export function SeatSelectionPage() {
 
   const total = useMemo(() => selected.reduce((sum, s) => sum + s.price, 0), [selected]);
 
+  /** Send the user to sign in, then back to this seat map */
+  const goSignIn = (title: string) => {
+    toast.show({ tone: "info", title, detail: "Your trip is kept, you will come straight back to the seat map." });
+    navigate("/login", { state: { from: location.pathname } });
+  };
+
   const { submit: holdSeats, pending: holding, resetKey } = useSubmitLock(async ({ idempotencyKey }) => {
     if (!seatClass) return;
+    if (!user) {
+      goSignIn("Sign in to hold your seats");
+      return;
+    }
     try {
       if (!query) return;
       const hold = await api.holdSeats(
@@ -149,6 +164,11 @@ export function SeatSelectionPage() {
           : "Please pick other seats on the map.",
         durationMs: 7000,
       });
+      return;
+    }
+    if (e.kind === "UNAUTHORIZED") {
+      // The token expired while picking seats; lib/http.ts already cleared it
+      goSignIn("Your session has expired, please sign in again");
       return;
     }
     if (e.kind === "NOT_ADMITTED") {
@@ -339,6 +359,8 @@ export function SeatSelectionPage() {
             >
               {hold
                 ? "Cancel your current hold to pick other seats"
+                : selected.length === maxSeats && !user
+                ? "Sign in to hold your seats"
                 : selected.length === maxSeats
                 ? `Hold ${maxSeats} ${maxSeats === 1 ? "seat" : "seats"} for 10 minutes`
                 : `Pick ${maxSeats - selected.length} more ${maxSeats - selected.length === 1 ? "seat" : "seats"}`}

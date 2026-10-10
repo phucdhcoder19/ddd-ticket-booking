@@ -1,9 +1,12 @@
 package com.hoangphuc.ddd.controller.config;
 
+import com.hoangphuc.ddd.controller.support.AuthInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.method.HandlerTypePredicate;
@@ -15,7 +18,10 @@ import org.springframework.web.method.HandlerTypePredicate;
  * it meaningless. So it belongs to the interface layer, not the storage layer.
  */
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
+
+    private final AuthInterceptor authInterceptor;
 
     /**
      * Origin of the web app. Vite switches ports when 5173 is busy (5174, 5180,
@@ -35,6 +41,19 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void configurePathMatch(PathMatchConfigurer configurer) {
         configurer.addPathPrefix("/api", HandlerTypePredicate.forAnnotation(RestController.class));
+    }
+
+    /**
+     * Endpoints that need a signed-in user. Browsing (stations, trips, seat
+     * maps), the waiting room and the flash-sale lesson endpoints stay open:
+     * signing in is only asked for when the customer starts to hold seats.
+     *
+     * Full paths, /api included: interceptors match the real request path.
+     */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(authInterceptor)
+                .addPathPatterns("/api/holds/**", "/api/orders/**", "/api/me/**", "/api/tickets/**");
     }
 
     /**

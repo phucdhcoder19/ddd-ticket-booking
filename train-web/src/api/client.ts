@@ -8,7 +8,7 @@
 import { request, type RequestOptions } from "@/lib/http";
 import { mockApi } from "./mock/server";
 import type {
-  Carriage, Hold, Order, Passenger, PaymentMethod, QueueTicket,
+  AuthSession, AuthUser, Carriage, Hold, Order, Passenger, PaymentMethod, QueueTicket,
   SaleWindow, SearchQuery, SeatClassCode, Station, Ticket, Trip,
 } from "./types";
 
@@ -89,6 +89,23 @@ export const api = {
     USE_MOCK
       ? mockApi.refundTicket(ticketId)
       : request<Ticket>(`/tickets/${ticketId}/refund`, { ...o, method: "POST", maxRetries: 0 }),
+
+  // ── Account ─────────────────────────────────────────────────────────────
+  // No retries: a 429 here means "too many wrong passwords", not "server busy",
+  // and retrying it would only extend the lockout.
+  register: (input: { phone: string; fullName: string; password: string }, o?: CallOptions) =>
+    USE_MOCK
+      ? mockApi.register(input)
+      : request<AuthSession>("/auth/register", { ...o, method: "POST", body: input, maxRetries: 0 }),
+
+  login: (input: { phone: string; password: string }, o?: CallOptions) =>
+    USE_MOCK
+      ? mockApi.login(input)
+      : request<AuthSession>("/auth/login", { ...o, method: "POST", body: input, maxRetries: 0 }),
+
+  /** Checks a stored token on startup; a 401 clears the session (lib/http.ts) */
+  me: (o?: CallOptions) =>
+    USE_MOCK ? mockApi.me() : request<AuthUser>("/me", o),
 
   joinQueue: (o?: CallOptions) =>
     USE_MOCK ? mockApi.joinQueue() : request<QueueTicket>("/queue", { ...o, method: "POST" }),

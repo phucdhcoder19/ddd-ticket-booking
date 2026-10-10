@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorState, LoadingRegion } from "@/components/ui/StateView";
 import { useAsync } from "@/hooks/useAsync";
 import { useSubmitLock } from "@/hooks/useSubmitLock";
+import { useAuth } from "@/store/AuthContext";
 import { useToast } from "@/store/ToastContext";
 import { friendlyMessage } from "@/api/errors";
 import { formatVnd, parseIso } from "@/lib/format";
@@ -29,7 +30,9 @@ export function MyTicketsPage() {
   const [tab, setTab] = useState<Tab>("upcoming");
   const [confirming, setConfirming] = useState<Ticket | null>(null);
 
-  const tickets = useAsync((o) => api.getMyTickets(o), []);
+  const { user } = useAuth();
+  // Signed out: do not even ask, the server would answer 401
+  const tickets = useAsync((o) => (user ? api.getMyTickets(o) : Promise.resolve([] as Ticket[])), [user?.id]);
 
   const { submit: doRefund, pending: refunding } = useSubmitLock(async ({ idempotencyKey }) => {
     if (!confirming) return;
@@ -89,7 +92,14 @@ export function MyTicketsPage() {
         ))}
       </div>
 
-      {tickets.loading && tickets.isInitialLoad ? (
+      {!user ? (
+        <EmptyState
+          icon="🔐"
+          title="Sign in to see your tickets"
+          detail="Tickets are kept in your account, with their QR codes, on every device you sign in on."
+          action={<Button onClick={() => navigate("/login", { state: { from: "/my-tickets" } })}>Sign in</Button>}
+        />
+      ) : tickets.loading && tickets.isInitialLoad ? (
         <LoadingRegion label="Loading your tickets…">
           <div className="flex flex-col gap-3">
             <TicketCardSkeleton />

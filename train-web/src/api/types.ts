@@ -165,3 +165,18 @@ export type SearchQuery = {
   date: string;               // yyyy-MM-dd
   passengers: number;
 };
+
+/** The signed-in customer */
+export type AuthUser = {
+  id: number;
+  phone: string;
+  fullName: string;
+};
+
+/** Answer to sign-in / registration: the token goes into "Authorization: Bearer" on every request */
+export type AuthSession = {
+  token: string;
+  /** ISO — the session is dropped at this moment instead of waiting for a 401 */
+  expiresAt: string;
+  user: AuthUser;
+};

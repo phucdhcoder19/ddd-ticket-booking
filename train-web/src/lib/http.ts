@@ -1,5 +1,6 @@
 import { ApiError, type ApiErrorKind } from "@/api/errors";
 import { getQueuePass } from "@/lib/queuePass";
+import { clearSession, getAuthToken } from "@/lib/auth";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
@@ -94,6 +95,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     // The user cancelling (leaving the screen) and the timeout are two different abort sources
     const composed = signal ? AbortSignal.any([signal, timeoutCtl.signal]) : timeoutCtl.signal;
     const queuePass = getQueuePass();
+    const authToken = getAuthToken();
 
     try {
       const res = await fetch(`${BASE_URL}${path}`, {
@@ -104,6 +106,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
           // Attach the admission pass to EVERY request, not just /holds: the API
           // layer does not need to know which endpoints require it, the server decides.
           ...(queuePass ? { "X-Queue-Token": queuePass } : {}),
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: composed,
@@ -121,6 +124,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
         // success = false -> business error, read the code from the body
         const kind = kindFromStatus(payload.code);
+        if (kind === "UNAUTHORIZED") clearSession();
         const err = new ApiError(kind, payload.message ?? "The request did not succeed", {
           status: payload.code,
         });
@@ -133,6 +137,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
       const payload = await res.json().catch(() => ({}) as Record<string, unknown>);
       const kind = kindFromStatus(res.status, payload.code as string | undefined);
+      // The server no longer accepts this token (expired, or signed with an old
+      // secret): forget it everywhere, so the UI shows "Sign in" instead of a
+      // name that cannot do anything.
+      if (kind === "UNAUTHORIZED") clearSession();
       const retryAfterHeader = res.headers.get("Retry-After");
       const err = new ApiError(kind, (payload.message as string) ?? res.statusText, {
         status: res.status,

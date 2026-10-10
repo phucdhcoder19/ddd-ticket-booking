@@ -7,11 +7,12 @@
  */
 import { ApiError } from "@/api/errors";
 import type {
-  Carriage, Hold, HoldItem, Order, Passenger, PaymentMethod, QueueTicket,
+  AuthSession, AuthUser, Carriage, Hold, HoldItem, Order, Passenger, PaymentMethod, QueueTicket,
   SaleWindow, SearchQuery, Seat, SeatClassCode, Station, Ticket, Trip,
 } from "@/api/types";
 import { STATIONS, buildCarriages, buildTrips } from "./db";
 import { formatDate, formatTime } from "@/lib/format";
+import { getAuthToken } from "@/lib/auth";
 
 /** Chaos control panel — tweak it from the console: `__mock.overloadRate = 0.8` */
 export const chaos = {
@@ -110,6 +111,15 @@ function churn() {
   }
 }
 if (typeof window !== "undefined") setInterval(churn, 5_000);
+
+// ── Accounts ────────────────────────────────────────────────────────────────
+const mockUsers = new Map<number, AuthUser & { password: string }>([
+  [1, { id: 1, phone: "0912345678", fullName: "Demo User", password: "demo1234" }],
+]);
+
+function mockSession(user: AuthUser): AuthSession {
+  return { token: `mock-${user.id}`, expiresAt: new Date(Date.now() + 24 * 3600_000).toISOString(), user };
+}
 
 // ── Waiting room ────────────────────────────────────────────────────────────
 let queueState: { token: string; position: number; total: number; enteredAt: number } | null = null;
@@ -354,6 +364,32 @@ export const mockApi = {
     t.status = "REFUNDED";
     t.refundAmount = Math.round(t.price * 0.8);
     return t;
+  },
+
+  // ── Account (mock: in memory, any token "mock-<id>" is valid) ──────────────
+  async register(input: { phone: string; fullName: string; password: string }): Promise<AuthSession> {
+    await gate({ canOverload: false });
+    if ([...mockUsers.values()].some((u) => u.phone === input.phone)) {
+      throw new ApiError("VALIDATION", "This phone number already has an account, please sign in", { status: 422 });
+    }
+    const user: AuthUser = { id: mockUsers.size + 1, phone: input.phone, fullName: input.fullName };
+    mockUsers.set(user.id, { ...user, password: input.password });
+    return mockSession(user);
+  },
+
+  async login(input: { phone: string; password: string }): Promise<AuthSession> {
+    await gate({ canOverload: false });
+    const found = [...mockUsers.values()].find((u) => u.phone === input.phone && u.password === input.password);
+    if (!found) throw new ApiError("VALIDATION", "Wrong phone number or password", { status: 422 });
+    return mockSession({ id: found.id, phone: found.phone, fullName: found.fullName });
+  },
+
+  async me(): Promise<AuthUser> {
+    await gate({ canOverload: false });
+    const id = Number(getAuthToken()?.replace("mock-", ""));
+    const found = mockUsers.get(id);
+    if (!found) throw new ApiError("UNAUTHORIZED", "Please sign in to continue", { status: 401 });
+    return { id: found.id, phone: found.phone, fullName: found.fullName };
   },
 
   // ── Waiting room ──────────────────────────────────────────────────────────

@@ -50,10 +50,11 @@ public class OrderAppServiceImpl implements OrderAppService {
      * passengers are there, then write the order and transfer the seats.
      */
     @Override
-    public OrderResult createFromHold(String holdCode, String queueToken) {
+    public OrderResult createFromHold(String holdCode, Long userId, String queueToken) {
         log.info("[ORDER] createFromHold | holdCode={}", holdCode);
 
-        Optional<Hold> found = holdRepository.findByCode(holdCode);
+        // Someone else's hold is "not found": paying for it would hand them an order with our money
+        Optional<Hold> found = holdRepository.findByCode(holdCode).filter(h -> userId.equals(h.getUserId()));
         if (found.isEmpty()) {
             return OrderResult.fail(OrderResult.Status.HOLD_NOT_FOUND);
         }
@@ -96,9 +97,9 @@ public class OrderAppServiceImpl implements OrderAppService {
     }
 
     @Override
-    public OrderResult getByOrderNumber(String orderNumber) {
+    public OrderResult getByOrderNumber(String orderNumber, Long userId) {
         TicketOrder order = ticketOrderRepository.findByOrderNumber(orderNumber);
-        if (order == null) {
+        if (order == null || !userId.equals(order.getUserId())) {
             return OrderResult.fail(OrderResult.Status.ORDER_NOT_FOUND);
         }
         return OrderResult.success(toDTO(order));

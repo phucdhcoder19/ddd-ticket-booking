@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/cn";
-import { IconChevronDown, IconLogin, IconPercent } from "@/components/ui/Icon";
+import { IconChevronDown, IconLogin, IconPercent, IconUser } from "@/components/ui/Icon";
+import { api } from "@/api/client";
+import { useAuth } from "@/store/AuthContext";
+import { useBooking } from "@/store/BookingContext";
 
 /**
  * App shell following Traveloka's layout:
@@ -26,6 +29,23 @@ const HEADER_HEIGHT = 108;
 
 export function AppLayout() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const { hold, reset: resetBooking } = useBooking();
+
+  /**
+   * Also drop the booking in progress: on a shared computer the next person
+   * must not land on the previous person's hold and passenger details. The
+   * hold is released on the server too — nobody can come back to it once
+   * signed out, so it would only block those seats until it expires.
+   * The request reads the token before signOut() below clears it.
+   */
+  const handleSignOut = () => {
+    if (hold) void api.releaseHold(hold.holdId).catch(() => {});
+    resetBooking();
+    signOut();
+    navigate("/");
+  };
   // The waiting room takes the whole screen with no navigation, so users do not lose their place
   const bare = pathname.startsWith("/waiting-room");
   const wide = pathname === "/";
@@ -92,25 +112,56 @@ export function AppLayout() {
             </nav>
 
             <div className="ml-auto flex items-center gap-2 lg:ml-0">
-              <button
-                type="button"
-                className={cn(
-                  "hidden rounded-full px-5 py-2 text-sm font-bold sm:block",
-                  onImage
-                    ? "bg-white/15 text-white ring-1 ring-white/50 hover:bg-white/25"
-                    : "border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100",
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  Sign in <IconLogin size={16} />
-                </span>
-              </button>
-              <button
-                type="button"
-                className="rounded-full bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600"
-              >
-                Register
-              </button>
+              {user ? (
+                <>
+                  <Link
+                    to="/my-tickets"
+                    className={cn(
+                      "flex max-w-48 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold",
+                      onImage
+                        ? "bg-white/15 text-white ring-1 ring-white/50 hover:bg-white/25"
+                        : "border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100",
+                    )}
+                  >
+                    <IconUser size={16} className="shrink-0" />
+                    <span className="truncate">{user.fullName}</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className={cn(
+                      "rounded-full px-4 py-2 text-sm font-bold",
+                      onImage ? "text-white hover:bg-white/15" : "text-ink-700 hover:bg-ink-100",
+                    )}
+                  >
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    state={{ from: pathname }}
+                    className={cn(
+                      "hidden rounded-full px-5 py-2 text-sm font-bold sm:block",
+                      onImage
+                        ? "bg-white/15 text-white ring-1 ring-white/50 hover:bg-white/25"
+                        : "border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100",
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      Sign in <IconLogin size={16} />
+                    </span>
+                  </Link>
+                  <Link
+                    to="/login?mode=register"
+                    state={{ from: pathname }}
+                    className="rounded-full bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600"
+                  >
+                    Register
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

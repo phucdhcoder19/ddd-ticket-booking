@@ -148,8 +148,8 @@ public class HoldAppServiceImpl implements HoldAppService {
     }
 
     @Override
-    public HoldResult getHold(String holdCode) {
-        Optional<Hold> found = holdRepository.findByCode(holdCode);
+    public HoldResult getHold(String holdCode, Long userId) {
+        Optional<Hold> found = findOwned(holdCode, userId);
         if (found.isEmpty()) {
             return HoldResult.fail(HoldResult.Status.HOLD_NOT_FOUND);
         }
@@ -174,8 +174,8 @@ public class HoldAppServiceImpl implements HoldAppService {
      *   ③ 1 transaction              - lock the hold, replace the old list with the new one
      */
     @Override
-    public HoldResult savePassengers(String holdCode, List<PassengerCommand> passengers) {
-        Optional<Hold> found = holdRepository.findByCode(holdCode);
+    public HoldResult savePassengers(String holdCode, Long userId, List<PassengerCommand> passengers) {
+        Optional<Hold> found = findOwned(holdCode, userId);
         if (found.isEmpty()) {
             return HoldResult.fail(HoldResult.Status.HOLD_NOT_FOUND);
         }
@@ -241,8 +241,8 @@ public class HoldAppServiceImpl implements HoldAppService {
     }
 
     @Override
-    public HoldResult releaseHold(String holdCode) {
-        Optional<Hold> found = holdRepository.findByCode(holdCode);
+    public HoldResult releaseHold(String holdCode, Long userId) {
+        Optional<Hold> found = findOwned(holdCode, userId);
         if (found.isEmpty()) {
             return HoldResult.fail(HoldResult.Status.HOLD_NOT_FOUND);
         }
@@ -255,6 +255,11 @@ public class HoldAppServiceImpl implements HoldAppService {
 
         log.info("[HOLD] cancelled by user | holdCode={}", holdCode);
         return HoldResult.success(null);
+    }
+
+    /** A hold of another user is treated as non-existent: no hint that the code is real. */
+    private Optional<Hold> findOwned(String holdCode, Long userId) {
+        return holdRepository.findByCode(holdCode).filter(h -> userId.equals(h.getUserId()));
     }
 
     @Override
